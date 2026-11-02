@@ -33,9 +33,11 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return base
     const parsed = JSON.parse(raw) as Partial<Settings>
+    const channelName = parsed.channelName === 'Germacrise' || !parsed.channelName ? base.channelName : parsed.channelName
     return {
       ...base,
       ...parsed,
+      channelName,
       bands: parsed.bands ? { ...base.bands, ...parsed.bands } : base.bands,
     }
   } catch {

@@ -9,15 +9,17 @@ import { emptyReading } from '../model'
 import { FACTORY_BANDS } from '../weather/factory'
 
 describe('trames compagnon', () => {
-  it('place la clé Germacrise à l’octet 34', () => {
+  it('place le nom #GerMaCrise_publique et sa clé', () => {
     const secret = parseHex(FACTORY_CHANNEL_KEY_HEX)
     expect(secret).toHaveLength(16)
     const frame = encodeSetChannel(1, FACTORY_CHANNEL_NAME, secret!)
     expect(frame[0]).toBe(0x20)
     expect(frame[1]).toBe(1)
     expect(frame).toHaveLength(50)
-    expect(new TextDecoder().decode(frame.subarray(2, 12))).toBe('Germacrise')
-    expect(frame[12]).toBe(0)
+    const nameField = frame.subarray(2, 34)
+    const end = nameField.indexOf(0)
+    expect(new TextDecoder().decode(nameField.subarray(0, end))).toBe('#GerMaCrise_publique')
+    expect(nameField.subarray(end).every((byte) => byte === 0)).toBe(true)
     expect([...frame.subarray(34)]).toEqual([...secret!])
   })
 

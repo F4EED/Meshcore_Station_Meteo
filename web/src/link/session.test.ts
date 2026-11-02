@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseHex } from '../protocol/bytes'
-import { FACTORY_CHANNEL_KEY_HEX } from '../protocol/codes'
+import { FACTORY_CHANNEL_KEY_HEX, FACTORY_CHANNEL_NAME } from '../protocol/codes'
 import { emptyReading } from '../model'
 import { createDemoLink } from './demo'
 import { StationFirmwareSim } from './firmware-sim'
@@ -43,7 +43,7 @@ describe('session station', () => {
     expect(opened.bands?.[3].veryHigh).toBeNull()
 
     const secret = parseHex(FACTORY_CHANNEL_KEY_HEX)!
-    const created = await session.createChannel(1, 'Germacrise', secret)
+    const created = await session.createChannel(1, FACTORY_CHANNEL_NAME, secret)
     expect(created.channels.find((channel) => channel.index === 1)?.secretHex).toBe(FACTORY_CHANNEL_KEY_HEX)
 
     const region = await session.setRegion('fr-ara', null)

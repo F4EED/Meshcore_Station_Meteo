@@ -147,7 +147,7 @@ export function ReglagesPage() {
           }}
         >
           <h3>Canal privé</h3>
-          <p className="note">Usine : Germacrise sur l’emplacement 1. L’emplacement 0 est souvent le canal Public.</p>
+          <p className="note">Usine : #GerMaCrise_publique sur l’emplacement 1. L’emplacement 0 est souvent le canal Public.</p>
           <label>
             Emplacement
             <input data-testid="channel-slot" inputMode="numeric" value={draft.channelSlot} onChange={(event) => setDraft({ ...draft, channelSlot: event.target.value })} />
@@ -176,7 +176,7 @@ export function ReglagesPage() {
                 })
               }
             >
-              Rétablir Germacrise
+              Rétablir #GerMaCrise_publique
             </button>
             <button type="submit" className="primary" data-testid="send-channel" disabled={!connected || station.busy}>
               Créer le canal
@@ -208,7 +208,7 @@ export function ReglagesPage() {
         >
           <h3>Région par défaut</h3>
           <p className="note">
-            Usine du canal Germacrise : fr-ara. Le nom part dans la variable <code>region</code>. Sans clé de transport, aucune clé de flood n’est inventée. Le nœud peut démarrer en fr-42.
+            Usine du canal #GerMaCrise_publique : fr-ara. Le nom part dans la variable <code>region</code>. Sans clé de transport, aucune clé de flood n’est inventée. Le nœud peut démarrer en fr-42.
           </p>
           <label>
             Région
