@@ -1,5 +1,5 @@
 export const APP_NAME = 'stmeteo-web'
-export const APP_VERSION = '0.1.0'
+export const APP_VERSION = '0.0.1'
 export const APP_TARGET_VER = 11
 
 export const CMD_APP_START = 0x01

@@ -1,5 +1,7 @@
 # Meshcore_Station_Meteo — client web
 
+Version **0.0.1**.
+
 Ce dossier est le client. Le README à la racine du dépôt reste celui de tout le projet ; il ne faut pas le remplacer par ce fichier.
 
 ## Pages
