@@ -30,7 +30,7 @@ static constexpr uint8_t kLppGps = 136;
 // Charge utile = LPP Cayenne, sans bulletin texte.
 static constexpr uint16_t kStmetDataType = 0xFF42;
 
-static constexpr char kChannelName[] = "Germacrise";
+static constexpr char kChannelName[] = "#GerMaCrise_publique";
 // 16 octets, secret de canal partagé (pas une clé privée de nœud).
 static constexpr char kChannelKeyHex[] = "dce843f4d5c2ed416b4ce17db83df618";
 

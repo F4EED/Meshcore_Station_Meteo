@@ -15,7 +15,7 @@
 #include <time.h>
 
 // Capteur MeshCore (type 4). Les extras LPP sont ajoutés à la télémétrie
-// (requête et push). La publication Germacrise est un GRP_DATA 0xFF42,
+// (requête et push). La publication #GerMaCrise_publique est un GRP_DATA 0xFF42,
 // flood transport fr-ara. Pas de sommeil : le nœud reste en écoute.
 
 static const char kBandsPath[] = "/stmet.bands";
@@ -297,7 +297,7 @@ class MyMesh : public SensorMesh {
   void prepareChannel() {
     uint8_t key[16];
     if (!mesh::Utils::fromHex(key, 16, kChannelKeyHex)) {
-      Serial.println("clé Germacrise illisible");
+      Serial.println("clé #GerMaCrise_publique illisible");
       return;
     }
     memset(channel_.secret, 0, sizeof(channel_.secret));
