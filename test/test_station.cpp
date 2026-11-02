@@ -210,8 +210,8 @@ static void testBands() {
   expect(parseBandLine("# commentaire", &parsed), "commentaire");
 }
 
-static void testKeyBytes() {
-  expect(strlen(kChannelKeyHex) == 32, "clé 16 octets");
+static void testChannel() {
+  expect(strcmp(kChannelName, "#germacrise_publique") == 0, "nom de canal");
   expectEq(kStmetDataType, 0xFF42, "type groupe");
   expect(strcmp(kRegionNode, "fr-42") == 0 && strcmp(kRegionChannel, "fr-ara") == 0, "régions");
 }
@@ -222,7 +222,7 @@ int main() {
   testCadence();
   testLpp();
   testBands();
-  testKeyBytes();
+  testChannel();
   if (failures) {
     fprintf(stderr, "%d échec(s)\n", failures);
     return 1;

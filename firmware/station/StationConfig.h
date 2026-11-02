@@ -30,9 +30,9 @@ static constexpr uint8_t kLppGps = 136;
 // Charge utile = LPP Cayenne, sans bulletin texte.
 static constexpr uint16_t kStmetDataType = 0xFF42;
 
-static constexpr char kChannelName[] = "#GerMaCrise_publique";
-// 16 octets, secret de canal partagé (pas une clé privée de nœud).
-static constexpr char kChannelKeyHex[] = "dce843f4d5c2ed416b4ce17db83df618";
+// Nom exact, minuscules. Canal public : le GRP_DATA part avec un secret
+// MeshCore de 16 octets à zéro (hash d'air 0x37). Il n'y a pas de clé.
+static constexpr char kChannelName[] = "#germacrise_publique";
 
 static constexpr char kRegionNode[] = "fr-42";
 static constexpr char kRegionChannel[] = "fr-ara";

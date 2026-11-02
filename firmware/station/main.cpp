@@ -15,8 +15,8 @@
 #include <time.h>
 
 // Capteur MeshCore (type 4). Les extras LPP sont ajoutés à la télémétrie
-// (requête et push). La publication #GerMaCrise_publique est un GRP_DATA 0xFF42,
-// flood transport fr-ara. Pas de sommeil : le nœud reste en écoute.
+// (requête et push). La publication #germacrise_publique est un GRP_DATA 0xFF42
+// au secret vide, flood transport fr-ara. Pas de sommeil : le nœud reste en écoute.
 
 static const char kBandsPath[] = "/stmet.bands";
 static const char kSeedPath[] = "/stmet.seed";
@@ -93,6 +93,8 @@ class MyMesh : public SensorMesh {
   void bringUp() {
     loadBands();
     prepareChannel();
+    Serial.print("canal ");
+    Serial.println(kChannelName);
     if (!fileExists(kSeedPath)) {
       seedRadio();
     }
@@ -295,13 +297,8 @@ class MyMesh : public SensorMesh {
   }
 
   void prepareChannel() {
-    uint8_t key[16];
-    if (!mesh::Utils::fromHex(key, 16, kChannelKeyHex)) {
-      Serial.println("clé #GerMaCrise_publique illisible");
-      return;
-    }
+    // Canal public, sans clé. MeshCore hash un secret 128 bits : ici, 16 zéros.
     memset(channel_.secret, 0, sizeof(channel_.secret));
-    memcpy(channel_.secret, key, 16);
     mesh::Utils::sha256(channel_.hash, sizeof(channel_.hash), channel_.secret, 16);
     char tagged[24];
     snprintf(tagged, sizeof(tagged), "#%s", kRegionChannel);
