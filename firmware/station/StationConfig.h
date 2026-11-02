@@ -38,6 +38,11 @@ static constexpr char kRegionNode[] = "fr-42";
 static constexpr char kRegionChannel[] = "fr-ara";
 static constexpr char kRegionParent[] = "fr";
 
+// Nom du projet. L'image s'annonce ainsi à la commande ver.
+// Le nœud sur l'air reste kNodeName.
+static constexpr char kProjectName[] = "Meshcore_Station_Meteo";
+static constexpr char kFirmwareVersion[] = "Meshcore_Station_Meteo-0.1.0";
+
 static constexpr char kNodeName[] = "F4EED-Meteo";
 
 // 1er janvier 2024 UTC. En dessous, l'horloge n'est pas utilisable pour les créneaux.
