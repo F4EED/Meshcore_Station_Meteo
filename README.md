@@ -172,7 +172,7 @@ Avant de conclure que la station est en service : antenne en place, BME688 vu su
 
 ## Appli web
 
-Le client web de la station est le dossier `web/` de ce dépôt, dès que sa branche est réunie à `main`. Les scripts sont détaillés dans [web/README.md](web/README.md). Le dialogue entre le navigateur et la carte est décrit dans [docs/lien-local.md](docs/lien-local.md). Ce bloc est celui que le travail sur l’appli met à jour.
+Le client web de la station est le dossier `web/` de ce dépôt, dès que sa branche est réunie à `main`. Version **0.0.1**. Les scripts sont détaillés dans [web/README.md](web/README.md). Le dialogue entre le navigateur et la carte est décrit dans [docs/lien-local.md](docs/lien-local.md). Ce bloc est celui que le travail sur l’appli met à jour.
 
 L’interface est en français.
 
