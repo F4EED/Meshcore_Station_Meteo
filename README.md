@@ -1,6 +1,6 @@
-# Station météo MeshCore
+# Meshcore_Station_Meteo
 
-Station météo de F4EED pour le réseau **MeshCore** en France. Une carte mesure l’air là où elle est installée, puis envoie ces mesures sur le maillage. Le dépôt est [F4EED/Meshcore_Station_Meteo](https://github.com/F4EED/Meshcore_Station_Meteo), licence MIT.
+**Meshcore_Station_Meteo** est la station météo de F4EED pour le réseau **MeshCore** en France. Une carte mesure l’air là où elle est installée, puis envoie ces mesures sur le maillage. Le dépôt est [F4EED/Meshcore_Station_Meteo](https://github.com/F4EED/Meshcore_Station_Meteo), licence MIT.
 
 Elle publie des mesures. Les pages qui suivent disent le matériel, le réglage radio, le rythme d’envoi, les indices calculés sur place, et la façon de compiler puis de flasher.
 
@@ -29,7 +29,7 @@ Le GPS ne tourne qu’une fois, huit minutes, au premier démarrage. S’il obti
 
 La puissance d’émission de la puce est **22 dBm**, sous le plafond de **27 dBm** PIRE du plan français. Le L1 Pro n’a pas d’amplificateur externe.
 
-Nom annoncé sur le réseau : `F4EED-Meteo`. Le mot de passe d’administration compilé dans l’image est `meteo`. À changer dès la première console, avec la commande `password` suivie du nouveau mot de passe.
+Le projet s’appelle **Meshcore_Station_Meteo**. L’image firmware s’annonce `Meshcore_Station_Meteo-0.1.0` (commande `ver`). Le nom du nœud sur le réseau reste `F4EED-Meteo`. Le mot de passe d’administration compilé dans l’image est `meteo`. À changer dès la première console, avec la commande `password` suivie du nouveau mot de passe.
 
 ## Radio MeshCore
 
