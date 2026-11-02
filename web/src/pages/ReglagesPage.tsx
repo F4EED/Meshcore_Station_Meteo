@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { isZero, parseHex, utf8Size } from '../protocol/bytes'
-import { FACTORY_CHANNEL_KEY_HEX, FACTORY_CHANNEL_NAME, FACTORY_CHANNEL_SLOT, FACTORY_REGION } from '../protocol/codes'
+import { parseHex, utf8Size } from '../protocol/bytes'
+import { FACTORY_CHANNEL_NAME, FACTORY_CHANNEL_SLOT, FACTORY_REGION } from '../protocol/codes'
 import { useStation } from '../state/context'
 import { BAND_FIELDS, BAND_FIELD_LABELS, BAND_META, BAND_ORDER, type BandField, type BandId } from '../model'
 import { FACTORY_BANDS, cloneBandSet, formatBandField, parseBandDraft } from '../weather/factory'
@@ -65,18 +65,16 @@ export function ReglagesPage() {
       setFormError('Nom de canal : 1 à 32 octets')
       return
     }
-    const secret = parseHex(draft.channelKeyHex)
+    const name = draft.channelName.trim()
+    const keyText = draft.channelKeyHex.trim()
+    const secret = keyText ? parseHex(keyText) : new Uint8Array(16)
     if (!secret || secret.length !== 16) {
-      setFormError('La clé fait 32 caractères hexadécimaux')
+      setFormError('La clé privée fait 32 caractères hexadécimaux, ou reste vide pour #germacrise_publique')
       return
     }
-    if (isZero(secret)) {
-      setFormError('Une clé toute nulle est refusée')
-      return
-    }
-    station.updateSettings({ channelName: draft.channelName, channelKeyHex: draft.channelKeyHex.trim().toLowerCase(), channelSlot: slot })
+    station.updateSettings({ channelName: name, channelKeyHex: keyText.toLowerCase(), channelSlot: slot })
     try {
-      await station.createChannel(slot, draft.channelName.trim(), secret)
+      await station.createChannel(slot, name, secret)
     } catch {
       /* le message est dans le bandeau */
     }
@@ -120,7 +118,7 @@ export function ReglagesPage() {
     <section className="stack">
       <header className="page-head">
         <h2>Réglages</h2>
-        <p>Créer le canal, la clé et la région, puis ajuster les bandes. Rien n’est émis tant que la station n’est pas connectée.</p>
+        <p>Créer le canal public et la région, puis ajuster les bandes. Rien n’est émis tant que la station n’est pas connectée.</p>
       </header>
       {station.error ? <p className="banner alert">{station.error}</p> : null}
       {formError ? <p className="banner alert">{formError}</p> : null}
@@ -146,8 +144,8 @@ export function ReglagesPage() {
             void sendChannel()
           }}
         >
-          <h3>Canal privé</h3>
-          <p className="note">Usine : #GerMaCrise_publique sur l’emplacement 1. L’emplacement 0 est souvent le canal Public.</p>
+          <h3>Canal</h3>
+          <p className="note">Usine : #germacrise_publique, public, sans clé à saisir, emplacement 1. L’emplacement 0 est souvent le canal Public.</p>
           <label>
             Emplacement
             <input data-testid="channel-slot" inputMode="numeric" value={draft.channelSlot} onChange={(event) => setDraft({ ...draft, channelSlot: event.target.value })} />
@@ -157,7 +155,7 @@ export function ReglagesPage() {
             <input data-testid="channel-name" value={draft.channelName} onChange={(event) => setDraft({ ...draft, channelName: event.target.value })} />
           </label>
           <label>
-            Clé (32 hex)
+            Clé privée (vide pour un canal #)
             <input data-testid="channel-key" className="mono" spellCheck={false} autoComplete="off" type={showKey ? 'text' : 'password'} value={draft.channelKeyHex} onChange={(event) => setDraft({ ...draft, channelKeyHex: event.target.value })} />
           </label>
           <div className="row">
@@ -171,12 +169,12 @@ export function ReglagesPage() {
                 setDraft({
                   ...draft,
                   channelName: FACTORY_CHANNEL_NAME,
-                  channelKeyHex: FACTORY_CHANNEL_KEY_HEX,
+                  channelKeyHex: '',
                   channelSlot: String(FACTORY_CHANNEL_SLOT),
                 })
               }
             >
-              Rétablir #GerMaCrise_publique
+              Rétablir #germacrise_publique
             </button>
             <button type="submit" className="primary" data-testid="send-channel" disabled={!connected || station.busy}>
               Créer le canal
@@ -208,7 +206,7 @@ export function ReglagesPage() {
         >
           <h3>Région par défaut</h3>
           <p className="note">
-            Usine du canal #GerMaCrise_publique : fr-ara. Le nom part dans la variable <code>region</code>. Sans clé de transport, aucune clé de flood n’est inventée. Le nœud peut démarrer en fr-42.
+            Usine du canal #germacrise_publique : fr-ara. Le nom part dans la variable <code>region</code>. Sans clé de transport, aucune clé de flood n’est inventée. Le nœud peut démarrer en fr-42.
           </p>
           <label>
             Région

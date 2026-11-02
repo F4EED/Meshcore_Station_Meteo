@@ -1,4 +1,4 @@
-# Station météo MeshCore
+# Meshcore_Station_Meteo
 
 Station météo de F4EED pour le réseau **MeshCore** en France. Une carte mesure l’air là où elle est installée, puis envoie ces mesures sur le maillage. Le dépôt est [F4EED/Meshcore_Station_Meteo](https://github.com/F4EED/Meshcore_Station_Meteo), licence MIT.
 
@@ -12,7 +12,7 @@ Le nœud reste dehors, sans écran et sans lien vers un service météo en ligne
 - plus souvent si une valeur sort des seuils ;
 - encore plus souvent si la météo change d’un coup.
 
-Les autres postes MeshCore qui ont le canal privé peuvent lire ces trames. Le rôle de la carte est un **capteur** (type de contact MeshCore `sensor`, valeur 4). Elle répond aux demandes de télémétrie. Elle ne relaie pas le trafic des voisins : ce travail reste aux répéteurs.
+Les autres postes MeshCore qui ont le canal **#germacrise_publique** peuvent lire ces trames. Le rôle de la carte est un **capteur** (type de contact MeshCore `sensor`, valeur 4). Elle répond aux demandes de télémétrie. Elle ne relaie pas le trafic des voisins : ce travail reste aux répéteurs.
 
 ## Matériel
 
@@ -50,11 +50,11 @@ Les réglages sont ceux du profil France publié sur [meshcore.fr](https://www.m
 
 Le facteur d’airtime correspondant au duty cycle de 10 % est 9 (`set dutycycle 10`). Si le budget d’émission restant est trop juste pour la trame, l’envoi attend.
 
-## Canal #GerMaCrise_publique et régions
+## Canal #germacrise_publique et régions
 
 Deux choses différentes circulent sur la même radio.
 
-**Le canal** dit qui peut lire la mesure. Il s’appelle **#GerMaCrise_publique**. Sa clé partagée est `dce843f4d5c2ed416b4ce17db83df618`. Sans cette clé, la trame est sur l’air et reste illisible. Ce n’est pas une clé privée de nœud : c’est le secret commun des postes qui suivent la station.
+**Le canal** dit qui affiche la mesure. Il s’appelle **#germacrise_publique**, tout en minuscules. Il est public : il n’a pas de clé. Le secret MeshCore de la trame est vide, seize octets à zéro. Un client qui ajoute ce canal sans clé lit la mesure. Sur l’air, le hash de canal est `0x37` (premier octet du SHA-256 de ce secret vide).
 
 **La région** dit jusqu’où le réseau accepte de relayer. La station a deux noms :
 
@@ -65,7 +65,7 @@ Deux choses différentes circulent sur la même radio.
 
 Les deux sont des enfants de la région `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie ni `fr-42` ni `fr-ara`. Il faut lui charger ces deux noms, sinon les trames s’arrêtent au premier saut.
 
-La clé de transport d’une région se calcule : début du SHA-256 de `#` collé au nom (`#fr-42`, `#fr-ara`). Elle ne se confond pas avec la clé du canal #GerMaCrise_publique.
+La clé de transport d’une région se calcule : début du SHA-256 de `#` collé au nom (`#fr-42`, `#fr-ara`). Le canal #germacrise_publique n’a pas de clé et n’entre pas dans ce calcul.
 
 Au premier démarrage, la carte enregistre ce profil (régions, duty cycle, cadence d’annonces, répétition coupée). Les changements faits ensuite au clavier restent en mémoire.
 
@@ -74,7 +74,7 @@ Au premier démarrage, la carte enregistre ce profil (régions, duty cycle, cade
 La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Deux chemins portent les mêmes grandeurs :
 
 1. la télémétrie du capteur, lue sur demande ou poussée vers un abonné ;
-2. une trame de groupe `GRP_DATA` (`0x06`), type de donnée `0xFF42` (plage de développement MeshCore), chiffrée avec la clé #GerMaCrise_publique et envoyée en flood sur `fr-ara`.
+2. une trame de groupe `GRP_DATA` (`0x06`), type de donnée `0xFF42` (plage de développement MeshCore), secret de canal vide, envoyée en flood sur `fr-ara`.
 
 `0xFF42` se lit ainsi : un entier 16 bits petit-boutiste, un octet de longueur, puis les octets LPP.
 
@@ -162,7 +162,7 @@ Commandes utiles, en plus du CLI MeshCore habituel :
 
 Noms de bandes : `temp`, `humidity`, `pressure`, `gas`, `iaq`, `co2`, `frost`, `fire`, `smoke`.
 
-Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, et au moins un répéteur ou un compagnon qui possède la clé #GerMaCrise_publique **et** les régions `fr-42` et `fr-ara`. Le décodage de la trame `0xFF42` se vérifie sur ce poste.
+Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, et au moins un répéteur ou un compagnon qui a le canal **#germacrise_publique** sans clé, ainsi que les régions `fr-42` et `fr-ara`. Le décodage de la trame `0xFF42` se vérifie sur ce poste.
 
 <!-- appli-web -->
 
@@ -176,9 +176,9 @@ L’interface est en français.
 | --- | --- |
 | Météo | Température, humidité, pression, gaz, IAQ, eCO2, batterie, point de rosée, ressenti, indices gel/verglas et incendie |
 | Connexions | USB, Bluetooth, HTTP, ou une démonstration sans radio |
-| Réglages | Nom et clé du canal, région par défaut, onglet Configuration pour les bandes et les indices |
+| Réglages | Nom du canal, sans clé, région par défaut, onglet Configuration pour les bandes et les indices |
 
-Réglage d’usine du canal dans l’appli : **#GerMaCrise_publique**, clé `dce843f4d5c2ed416b4ce17db83df618`, région **fr-ara**.
+Réglage d’usine du canal dans l’appli : **#germacrise_publique**, sans clé, région **fr-ara**.
 
 ```bash
 cd web

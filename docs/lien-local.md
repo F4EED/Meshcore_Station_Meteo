@@ -1,4 +1,4 @@
-# Lien local — client web et firmware station
+# Lien local — Meshcore_Station_Meteo
 
 Décidé le **2 novembre 2026**. Le firmware carte peut encore bouger. Ce fichier est le contrat que le client web applique déjà. USB, Bluetooth et HTTP portent **les mêmes charges utiles**. Seul l’emballage change.
 
@@ -50,10 +50,10 @@ Pas de dump de contacts, pas de sync des messages. La station n’est pas un car
 | --- | --- |
 | 0 | `0x20` |
 | 1 | emplacement (usine **1**, pas 0) |
-| 2–33 | nom UTF-8, complété par des zéros. Usine **#GerMaCrise_publique** |
-| 34–49 | secret 16 octets. Usine `dce843f4d5c2ed416b4ce17db83df618` |
+| 2–33 | nom UTF-8, complété par des zéros. Usine **#germacrise_publique** |
+| 34–49 | secret 16 octets. Usine **#germacrise_publique** : champ clé vide, le client envoie **seize octets à zéro** (hash `0x37`) |
 
-Réponse `0x00`, ou `0x01`. Le client refuse une clé de 16 zéros avant même l’envoi. Il relit ensuite l’emplacement.
+Réponse `0x00`, ou `0x01`. Le client relit ensuite l’emplacement.
 
 ### Région — variable `region`, pas une clé inventée
 

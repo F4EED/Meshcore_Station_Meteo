@@ -1,4 +1,4 @@
-import { isZero, readCString, toHex, utf8Size, writeCString } from './bytes'
+import { readCString, toHex, utf8Size, writeCString } from './bytes'
 import {
   APP_NAME,
   APP_TARGET_VER,
@@ -132,7 +132,6 @@ export function encodeSetChannel(index: number, name: string, secret: Uint8Array
   const nameBytes = utf8Size(name)
   if (!name.trim() || nameBytes > 32) throw new Error('Nom de canal : 1 à 32 octets')
   if (secret.length !== 16) throw new Error('La clé de canal fait 16 octets')
-  if (isZero(secret)) throw new Error('Clé de canal nulle refusée')
   const buf = new Uint8Array(50)
   buf[0] = CMD_SET_CHANNEL
   buf[1] = index

@@ -55,8 +55,7 @@ export const RADIO_BW_MILLIKHZ = 62500
 export const RADIO_SF = 8
 export const RADIO_CR = 8
 
-export const FACTORY_CHANNEL_NAME = '#GerMaCrise_publique'
-export const FACTORY_CHANNEL_KEY_HEX = 'dce843f4d5c2ed416b4ce17db83df618'
+export const FACTORY_CHANNEL_NAME = '#germacrise_publique'
 export const FACTORY_REGION = 'fr-ara'
 export const FACTORY_CHANNEL_SLOT = 1
 

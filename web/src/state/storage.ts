@@ -1,4 +1,4 @@
-import { FACTORY_CHANNEL_KEY_HEX, FACTORY_CHANNEL_NAME, FACTORY_CHANNEL_SLOT, FACTORY_REGION } from '../protocol/codes'
+import { FACTORY_CHANNEL_NAME, FACTORY_CHANNEL_SLOT, FACTORY_REGION } from '../protocol/codes'
 import { FACTORY_BANDS, bandsToList, cloneBandSet, type BandSet } from '../weather/factory'
 import type { Band } from '../model'
 
@@ -18,7 +18,7 @@ export function factorySettings(): Settings {
   return {
     httpUrl: 'http://127.0.0.1:5174',
     channelName: FACTORY_CHANNEL_NAME,
-    channelKeyHex: FACTORY_CHANNEL_KEY_HEX,
+    channelKeyHex: '',
     channelSlot: FACTORY_CHANNEL_SLOT,
     region: FACTORY_REGION,
     floodKeyHex: '',
@@ -33,11 +33,13 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return base
     const parsed = JSON.parse(raw) as Partial<Settings>
-    const channelName = parsed.channelName === 'Germacrise' || !parsed.channelName ? base.channelName : parsed.channelName
+    const legacyName = !parsed.channelName || parsed.channelName === 'Germacrise' || parsed.channelName === '#GerMaCrise_publique'
+    const legacyKey = !parsed.channelKeyHex || parsed.channelKeyHex.toLowerCase() === 'dce843f4d5c2ed416b4ce17db83df618'
     return {
       ...base,
       ...parsed,
-      channelName,
+      channelName: legacyName ? base.channelName : (parsed.channelName ?? base.channelName),
+      channelKeyHex: legacyKey ? '' : (parsed.channelKeyHex ?? ''),
       bands: parsed.bands ? { ...base.bands, ...parsed.bands } : base.bands,
     }
   } catch {

@@ -2,7 +2,7 @@
   "name": "station-meteo-web",
   "private": true,
   "version": "0.1.0",
-  "description": "Client web de la station météo MeshCore",
+  "description": "Client web Meshcore_Station_Meteo",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",

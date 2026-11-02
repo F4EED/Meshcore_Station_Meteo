@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHex } from './bytes'
-import { FACTORY_CHANNEL_KEY_HEX, FACTORY_CHANNEL_NAME } from './codes'
+import { FACTORY_CHANNEL_NAME } from './codes'
 import { encodeRadioProfile, encodeSetChannel } from './companion'
 import { encodeHostFrame, StreamFrameParser } from './frame'
 import { decodeLpp, encodeReadingLpp, readingsFromLpp } from './lpp'
@@ -9,22 +8,16 @@ import { emptyReading } from '../model'
 import { FACTORY_BANDS } from '../weather/factory'
 
 describe('trames compagnon', () => {
-  it('place le nom #GerMaCrise_publique et sa clé', () => {
-    const secret = parseHex(FACTORY_CHANNEL_KEY_HEX)
-    expect(secret).toHaveLength(16)
-    const frame = encodeSetChannel(1, FACTORY_CHANNEL_NAME, secret!)
+  it('écrit #germacrise_publique sans clé', () => {
+    const frame = encodeSetChannel(1, FACTORY_CHANNEL_NAME, new Uint8Array(16))
     expect(frame[0]).toBe(0x20)
     expect(frame[1]).toBe(1)
     expect(frame).toHaveLength(50)
     const nameField = frame.subarray(2, 34)
     const end = nameField.indexOf(0)
-    expect(new TextDecoder().decode(nameField.subarray(0, end))).toBe('#GerMaCrise_publique')
+    expect(new TextDecoder().decode(nameField.subarray(0, end))).toBe('#germacrise_publique')
     expect(nameField.subarray(end).every((byte) => byte === 0)).toBe(true)
-    expect([...frame.subarray(34)]).toEqual([...secret!])
-  })
-
-  it('refuse une clé nulle', () => {
-    expect(() => encodeSetChannel(1, 'A', new Uint8Array(16))).toThrow(/nulle/)
+    expect(frame.subarray(34).every((byte) => byte === 0)).toBe(true)
   })
 
   it('encode le profil meshcore.fr', () => {

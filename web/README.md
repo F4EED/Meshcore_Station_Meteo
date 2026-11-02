@@ -1,4 +1,4 @@
-# Client web — station météo
+# Meshcore_Station_Meteo — client web
 
 Ce dossier est le client. Le README à la racine du dépôt reste celui de tout le projet ; il ne faut pas le remplacer par ce fichier.
 
@@ -7,7 +7,7 @@ Ce dossier est le client. Le README à la racine du dépôt reste celui de tout 
 - **Météo** — relevé courant, pastilles vert / orange / rouge, point de rosée, ressenti, indices gel/verglas et incendie, signal de fumée éventuelle.
 - **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale.
 - **Réglages**
-  - **Canal** — créer le nom, la clé et l’emplacement. Usine : `#GerMaCrise_publique`, clé `dce843f4d5c2ed416b4ce17db83df618`, emplacement 1.
+  - **Canal** — nom et emplacement. Usine : `#germacrise_publique`, public, sans clé à saisir, emplacement 1. Le champ clé reste vide : le client envoie seize octets à zéro.
   - **Région** — région par défaut. Usine : `fr-ara`. La clé de transport du flood est optionnelle et n’est pas inventée.
   - **Configuration** — min/max et autres seuils STMET (température, humidité, pression, gaz, IAQ, eCO2) plus les indices gel et incendie.
 

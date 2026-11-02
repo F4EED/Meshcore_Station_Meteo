@@ -18,7 +18,7 @@ export function Shell({ page, onNavigate, children }: { page: PageId; onNavigate
       <header className="top">
         <div>
           <p className="eyebrow">F4EED · MeshCore</p>
-          <h1>Station météo</h1>
+          <h1>Meshcore_Station_Meteo</h1>
         </div>
         <p className={`status status-${status}`} data-testid="link-status">
           <span className="dot" aria-hidden="true" />

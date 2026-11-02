@@ -213,7 +213,6 @@ export class StationFirmwareSim {
     const index = frame[1]
     if (index >= this.maxChannels) return error(ERR_NOT_FOUND)
     const secret = frame.subarray(34, 50)
-    if (secret.every((b) => b === 0)) return error(ERR_ILLEGAL)
     const slot = emptySlot()
     slot.name = new TextDecoder().decode(frame.subarray(2, 34)).replace(/\0+$/g, '').trim()
     slot.secret = Uint8Array.from(secret)
