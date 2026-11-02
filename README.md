@@ -29,7 +29,7 @@ Le GPS ne tourne qu’une fois, huit minutes, au premier démarrage. S’il obti
 
 La puissance d’émission de la puce est **22 dBm**, sous le plafond de **27 dBm** PIRE du plan français. Le L1 Pro n’a pas d’amplificateur externe.
 
-Le projet s’appelle **Meshcore_Station_Meteo**. L’image firmware s’annonce `Meshcore_Station_Meteo-0.1.0` (commande `ver`). Le nom du nœud sur le réseau reste `F4EED-Meteo`. Le mot de passe d’administration compilé dans l’image est `meteo`. À changer dès la première console, avec la commande `password` suivie du nouveau mot de passe.
+Le projet s’appelle **Meshcore_Station_Meteo**. L’image firmware s’annonce `Meshcore_Station_Meteo-0.0.1` (commande `ver`). Le nom du nœud sur le réseau reste `F4EED-Meteo`. Le mot de passe d’administration compilé dans l’image est `meteo`. À changer dès la première console, avec la commande `password` suivie du nouveau mot de passe.
 
 ## Radio MeshCore
 
@@ -136,18 +136,22 @@ Il faut Git et [PlatformIO](https://platformio.org/) (`pio` dans le terminal). D
 pio run -e WioTrackerL1_meteo
 ```
 
-L’image à copier sur la carte est :
+L’image à copier sur la carte est dans le dépôt :
 
-`build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2`
+`firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`
+
+SHA-256 : `1b54b4dfac22b15de3771dcb6c8216f7d72880462ab308583f7b0f6c53778e18`
+
+`build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
 
 Les dossiers `firmware/` et `scripts/` arrivent avec le firmware. Tant qu’ils ne sont pas sur `main`, ils sont dans la [pull request firmware](https://github.com/F4EED/Meshcore_Station_Meteo/pull/1), branche `cursor/station-meteo-firmware-c913`.
 
 ## Flasher
 
-1. Produire le fichier `firmware.uf2` avec `./scripts/build.sh`.
+1. Prendre `firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`, ou le régénérer avec `./scripts/build.sh`.
 2. Brancher le L1 Pro en USB.
 3. **Deux appuis rapides** sur le bouton reset. Un volume UF2 apparaît (le chargeur de boot de la carte).
-4. Copier `firmware.uf2` sur ce volume. La carte redémarre toute seule à la fin de la copie.
+4. Copier `Meshcore_Station_Meteo-0.0.1.uf2` sur ce volume. La carte redémarre toute seule à la fin de la copie.
 5. Ouvrir la console série à **115200** bauds.
 
 Commandes utiles, en plus du CLI MeshCore habituel :

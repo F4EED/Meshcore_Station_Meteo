@@ -212,7 +212,7 @@ static void testBands() {
 
 static void testChannel() {
   expect(strcmp(kProjectName, "Meshcore_Station_Meteo") == 0, "nom du projet");
-  expect(strcmp(kFirmwareVersion, "Meshcore_Station_Meteo-0.1.0") == 0, "version d'image");
+  expect(strcmp(kFirmwareVersion, "Meshcore_Station_Meteo-0.0.1") == 0, "version d'image");
   expect(strcmp(kChannelName, "#germacrise_publique") == 0, "nom de canal");
   expectEq(kStmetDataType, 0xFF42, "type groupe");
   expect(strcmp(kRegionNode, "fr-42") == 0 && strcmp(kRegionChannel, "fr-ara") == 0, "régions");

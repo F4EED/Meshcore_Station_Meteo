@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Clone MeshCore au pin, applique le crochet télémétrie, compile l'image L1 Pro.
-# L'UF2 sort sous build/MeshCore/.pio/build/WioTrackerL1_meteo/.
+# pio run produit le .hex. La conversion UF2 (famille nRF52840 0xADA52840)
+# reprend la commande de build.sh amont. La copie versionnée va dans firmware/releases/.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +11,8 @@ REPO="https://github.com/meshcore-dev/MeshCore.git"
 
 if command -v pio >/dev/null 2>&1; then
   PIO=(pio)
+elif [[ -x "${HOME}/.local/bin/pio" ]]; then
+  PIO=("${HOME}/.local/bin/pio")
 elif command -v platformio >/dev/null 2>&1; then
   PIO=(platformio)
 else
@@ -35,10 +38,20 @@ cp "$ROOT/firmware/variant/platformio.ini" "$MESH/variants/wio-tracker-l1-meteo/
 
 ( cd "$MESH" && "${PIO[@]}" run -e WioTrackerL1_meteo )
 
+HEX="$MESH/.pio/build/WioTrackerL1_meteo/firmware.hex"
 UF2="$MESH/.pio/build/WioTrackerL1_meteo/firmware.uf2"
-if [[ -f "$UF2" ]]; then
-  echo "UF2: $UF2"
-else
+python3 "$MESH/bin/uf2conv/uf2conv.py" "$HEX" -c -o "$UF2" -f 0xADA52840
+if [[ ! -f "$UF2" ]]; then
   echo "Compilation terminée, UF2 introuvable à $UF2" >&2
   exit 1
 fi
+
+VER="$(sed -n 's/.*kFirmwareVersion\[\] = "\([^"]*\)".*/\1/p' "$ROOT/firmware/station/StationConfig.h")"
+if [[ -z "$VER" ]]; then
+  echo "kFirmwareVersion introuvable" >&2
+  exit 1
+fi
+RELEASE="$ROOT/firmware/releases/${VER}.uf2"
+mkdir -p "$(dirname "$RELEASE")"
+cp "$UF2" "$RELEASE"
+echo "UF2: $RELEASE"
