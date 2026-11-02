@@ -1,0 +1,91 @@
+import { describe, expect, it } from 'vitest'
+import { parseHex } from './bytes'
+import { FACTORY_CHANNEL_KEY_HEX, FACTORY_CHANNEL_NAME } from './codes'
+import { encodeRadioProfile, encodeSetChannel } from './companion'
+import { encodeHostFrame, StreamFrameParser } from './frame'
+import { decodeLpp, encodeReadingLpp, readingsFromLpp } from './lpp'
+import { decodeReading, encodeReading } from './station'
+import { emptyReading } from '../model'
+import { FACTORY_BANDS } from '../weather/factory'
+
+describe('trames compagnon', () => {
+  it('place la clé Germacrise à l’octet 34', () => {
+    const secret = parseHex(FACTORY_CHANNEL_KEY_HEX)
+    expect(secret).toHaveLength(16)
+    const frame = encodeSetChannel(1, FACTORY_CHANNEL_NAME, secret!)
+    expect(frame[0]).toBe(0x20)
+    expect(frame[1]).toBe(1)
+    expect(frame).toHaveLength(50)
+    expect(new TextDecoder().decode(frame.subarray(2, 12))).toBe('Germacrise')
+    expect(frame[12]).toBe(0)
+    expect([...frame.subarray(34)]).toEqual([...secret!])
+  })
+
+  it('refuse une clé nulle', () => {
+    expect(() => encodeSetChannel(1, 'A', new Uint8Array(16))).toThrow(/nulle/)
+  })
+
+  it('encode le profil meshcore.fr', () => {
+    const frame = encodeRadioProfile()
+    const view = new DataView(frame.buffer)
+    expect(frame[0]).toBe(0x0b)
+    expect(view.getUint32(1, true)).toBe(869618)
+    expect(view.getUint32(5, true)).toBe(62500)
+    expect(frame[9]).toBe(8)
+    expect(frame[10]).toBe(8)
+    expect(frame[11]).toBe(0)
+  })
+
+  it('ressynchronise le flux 0x3E', () => {
+    const payload = Uint8Array.of(0xaa, 0xbb)
+    const host = encodeHostFrame(payload)
+    const device = Uint8Array.from(host)
+    device[0] = 0x3e
+    const chunk = Uint8Array.from([0x00, 0x3c, ...device])
+    const parser = new StreamFrameParser()
+    const first = parser.push(chunk.subarray(0, 4))
+    const second = parser.push(chunk.subarray(4))
+    const frames = [...first, ...second]
+    expect(frames).toHaveLength(1)
+    expect([...frames[0]]).toEqual([0xaa, 0xbb])
+  })
+})
+
+describe('station et LPP', () => {
+  it('conserve un seuil vide', () => {
+    const encoded = encodeReading({
+      ...emptyReading(),
+      temperatureC: 11.5,
+      batteryMv: 3920,
+      cadence: 'normal',
+      intervalS: 120,
+      epoch: 1_700_000_000,
+    })
+    const decoded = decodeReading(encoded)
+    expect(decoded.temperatureC).toBeCloseTo(11.5, 2)
+    expect(decoded.humidityPct).toBeNull()
+    expect(decoded.batteryMv).toBe(3920)
+    expect(decoded.cadence).toBe('normal')
+    expect(decoded.intervalS).toBe(120)
+  })
+
+  it('décode un BME680 CayenneLPP', () => {
+    const reading = {
+      ...emptyReading(),
+      temperatureC: 18.5,
+      humidityPct: 40,
+      pressureHpa: 1010,
+      gasOhm: 50_000,
+      iaq: 50,
+      batteryMv: 4000,
+    }
+    const partial = readingsFromLpp(decodeLpp(encodeReadingLpp(reading)))
+    expect(partial.temperatureC).toBeCloseTo(18.5, 1)
+    expect(partial.humidityPct).toBe(40)
+    expect(partial.pressureHpa).toBeCloseTo(1010, 1)
+    expect(partial.gasOhm).toBeCloseTo(50_000, 0)
+    expect(partial.iaq).toBe(50)
+    expect(partial.batteryMv).toBe(4000)
+    expect(FACTORY_BANDS.temp.mean).toBe(15)
+  })
+})
