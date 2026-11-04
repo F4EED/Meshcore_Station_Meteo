@@ -1,7 +1,7 @@
 import type { Reading } from '../model'
 import { emptyReading } from '../model'
-import { RESP_CHANNEL_DATA, RESP_CHANNEL_MSG, RESP_CHANNEL_MSG_V3, STMET_DATA_TYPE } from './codes'
-import { decodeLpp, readingsFromLpp } from './lpp'
+import { PUSH_TELEM, RESP_CHANNEL_DATA, RESP_CHANNEL_MSG, RESP_CHANNEL_MSG_V3, STMET_DATA_TYPE } from './codes'
+import { lppBufferScore, readingsFromLppBuffer } from './lpp'
 
 export type ChannelData = {
   channelIdx: number
@@ -18,6 +18,10 @@ type MetricKey =
   | 'temperatureC'
   | 'humidityPct'
   | 'pressureHpa'
+  | 'gasOhm'
+  | 'iaq'
+  | 'eco2Ppm'
+  | 'batteryMv'
   | 'dewPointC'
   | 'feelsLikeC'
   | 'frostScore'
@@ -27,7 +31,17 @@ type MetricKey =
 const LABEL: Record<string, MetricKey> = {
   t: 'temperatureC',
   hr: 'humidityPct',
+  rh: 'humidityPct',
+  humidité: 'humidityPct',
+  humidite: 'humidityPct',
   p: 'pressureHpa',
+  gaz: 'gasOhm',
+  gas: 'gasOhm',
+  iaq: 'iaq',
+  eco2: 'eco2Ppm',
+  co2: 'eco2Ppm',
+  batterie: 'batteryMv',
+  battery: 'batteryMv',
   rosée: 'dewPointC',
   rosee: 'dewPointC',
   ressenti: 'feelsLikeC',
@@ -81,7 +95,15 @@ export function parseChannelText(frame: Uint8Array): ChannelText | null {
 }
 
 export function hasStationAir(reading: Reading): boolean {
-  return reading.temperatureC != null || reading.humidityPct != null || reading.pressureHpa != null || reading.dewPointC != null
+  return (
+    reading.temperatureC != null ||
+    reading.humidityPct != null ||
+    reading.pressureHpa != null ||
+    reading.dewPointC != null ||
+    reading.gasOhm != null ||
+    reading.iaq != null ||
+    reading.eco2Ppm != null
+  )
 }
 
 function splitSender(text: string): { sender: string; body: string } {
@@ -96,13 +118,14 @@ export function parseMeteoLine(raw: string): Reading | null {
   const { sender, body } = splitSender(raw.replace(/\0/g, ''))
   if (!body || /^mto_now$/i.test(body)) return null
   const reading = emptyReading()
-  const field = /(^|[^0-9A-Za-z_À-ÿ])(ressenti|rosée|rosee|fumée|fumee|gel|feu|HR|T|P)\s+(-?\d+(?:[.,]\d+)?)/gi
+  const field = /(^|[^0-9A-Za-z_À-ÿ])(batterie|battery|ressenti|humidité|humidite|rosée|rosee|fumée|fumee|eco2|co2|iaq|gaz|gas|gel|feu|HR|RH|T|P)\s*[=:]?\s*(-?\d+(?:[.,]\d+)?)/gi
   let count = 0
   for (const match of body.matchAll(field)) {
     const key = LABEL[match[2].toLowerCase()]
     if (!key) continue
-    const value = Number(match[3].replace(',', '.'))
+    let value = Number(match[3].replace(',', '.'))
     if (!Number.isFinite(value)) continue
+    if (key === 'batteryMv' && Math.abs(value) < 50) value = Math.round(value * 1000)
     reading[key] = value
     count += 1
   }
@@ -115,7 +138,15 @@ export function readingFromCompanionFrame(frame: Uint8Array): { reading: Reading
   if (frame[0] === RESP_CHANNEL_DATA) {
     const data = parseChannelData(frame)
     if (!data || data.dataType !== STMET_DATA_TYPE) return null
-    const reading = { ...emptyReading(), ...readingsFromLpp(decodeLpp(data.payload)) }
+    const declared = data.payload
+    const rest = frame.subarray(9)
+    const chosen = lppBufferScore(rest) > lppBufferScore(declared) ? rest : declared
+    const reading = { ...emptyReading(), ...readingsFromLppBuffer(chosen) }
+    if (!hasStationAir(reading)) return null
+    return { reading, source: 'radio' }
+  }
+  if (frame[0] === PUSH_TELEM && frame.length > 8) {
+    const reading = { ...emptyReading(), ...readingsFromLppBuffer(frame.subarray(8)) }
     if (!hasStationAir(reading)) return null
     return { reading, source: 'radio' }
   }

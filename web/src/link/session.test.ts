@@ -155,4 +155,21 @@ describe('session station', () => {
     expect(snap.reading?.smokeScore).toBe(5)
     expect(sim.selfTelemetryHits).toBe(0)
   })
+
+  it('lit RH, gaz, IAQ, eCO2 et batterie dans le texte', async () => {
+    const sim = new StationFirmwareSim()
+    sim.advType = 1
+    sim.stationExtension = false
+    sim.radioQueue.push(encodeChannelTextFrame(1, 'F4EED-Meteo: T 15.0 RH 55.0 P 1013.2 gaz 50000 iaq 42 eco2 568 batterie 3.9'))
+    const session = new StationSession(createDemoLink(sim))
+    const snap = await session.open()
+    expect(sim.selfTelemetryHits).toBe(0)
+    expect(snap.reading?.temperatureC).toBeCloseTo(15, 1)
+    expect(snap.reading?.humidityPct).toBeCloseTo(55, 1)
+    expect(snap.reading?.pressureHpa).toBeCloseTo(1013.2, 1)
+    expect(snap.reading?.gasOhm).toBe(50_000)
+    expect(snap.reading?.iaq).toBe(42)
+    expect(snap.reading?.eco2Ppm).toBe(568)
+    expect(snap.reading?.batteryMv).toBe(3900)
+  })
 })

@@ -355,6 +355,10 @@ export class StationSession {
       }
       if (isError(frame) || frame[0] === RESP_NO_MORE_MSGS) break
       take(frame)
+      while (this.stashedRadio.length) {
+        const extra = this.stashedRadio.shift()
+        if (extra) take(extra)
+      }
     }
     if (!reading || !source) return null
     return { reading, source }
@@ -403,6 +407,10 @@ export class StationSession {
       const left = deadline - Date.now()
       if (left <= 0) throw new Error('Délai dépassé')
       const frame = await this.link.nextFrame(left)
+      if (frame[0] === PUSH_TELEM && !accept(frame)) {
+        this.stashedRadio.push(frame)
+        continue
+      }
       if (frame[0] >= 0x80 && !accept(frame)) continue
       if (!accept(frame) && RADIO_REPLY.has(frame[0])) {
         this.stashedRadio.push(frame)

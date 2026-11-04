@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FACTORY_CHANNEL_NAME } from './codes'
 import { encodeRadioProfile, encodeSetChannel } from './companion'
 import { encodeHostFrame, StreamFrameParser } from './frame'
-import { decodeLpp, encodeReadingLpp, readingsFromLpp } from './lpp'
+import { decodeLpp, encodeReadingLpp, readingsFromLpp, readingsFromLppBuffer } from './lpp'
 import { parseMeteoLine } from './radio'
 import { decodeReading, encodeReading } from './station'
 import { emptyReading } from '../model'
@@ -100,5 +100,52 @@ describe('station et LPP', () => {
     expect(line?.fireScore).toBe(2)
     expect(line?.smokeScore).toBe(0)
     expect(parseMeteoLine('Pager: mto_now')).toBeNull()
+    const rich = parseMeteoLine('F4EED-Meteo: T 15.0 RH 55.0 P 1013.2 gaz 50000 iaq 42 eco2 568 batterie 3.9')
+    expect(rich?.temperatureC).toBeCloseTo(15, 1)
+    expect(rich?.humidityPct).toBeCloseTo(55, 1)
+    expect(rich?.pressureHpa).toBeCloseTo(1013.2, 1)
+    expect(rich?.gasOhm).toBe(50000)
+    expect(rich?.iaq).toBe(42)
+    expect(rich?.eco2Ppm).toBe(568)
+    expect(rich?.batteryMv).toBe(3900)
+  })
+
+  it('garde gaz, IAQ, eCO2 et batterie même sans humidité', () => {
+    const partial = readingsFromLppBuffer(encodeReadingLpp({
+      ...emptyReading(),
+      temperatureC: 15,
+      pressureHpa: 1013.2,
+      gasOhm: 50_000,
+      iaq: 42,
+      eco2Ppm: 568,
+      batteryMv: 3900,
+    }))
+    expect(partial.humidityPct).toBeUndefined()
+    expect(partial.temperatureC).toBeCloseTo(15, 1)
+    expect(partial.pressureHpa).toBeCloseTo(1013.2, 1)
+    expect(partial.gasOhm).toBe(50_000)
+    expect(partial.iaq).toBe(42)
+    expect(partial.eco2Ppm).toBe(568)
+    expect(partial.batteryMv).toBe(3900)
+  })
+
+  it('relit une humidité codée sur deux octets', () => {
+    const buf = Uint8Array.of(
+      0x02, 0x67, 0x00, 0x96,
+      0x02, 0x68, 0x00, 0x6e,
+      0x02, 0x73, 0x27, 0x94,
+      0x02, 0x64, 0x00, 0x00, 0xc3, 0x50,
+      0x02, 0x7d, 0x02, 0x38,
+      0x03, 0x64, 0x00, 0x00, 0x00, 0x2a,
+      0x01, 0x74, 0x01, 0x86,
+    )
+    const partial = readingsFromLppBuffer(buf)
+    expect(readingsFromLpp(decodeLpp(buf, 1)).humidityPct).toBe(0)
+    expect(partial.humidityPct).toBeCloseTo(55, 1)
+    expect(partial.pressureHpa).toBeCloseTo(1013.2, 1)
+    expect(partial.gasOhm).toBe(50_000)
+    expect(partial.iaq).toBe(42)
+    expect(partial.eco2Ppm).toBe(568)
+    expect(partial.batteryMv).toBe(3900)
   })
 })

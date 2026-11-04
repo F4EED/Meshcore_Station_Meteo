@@ -15,10 +15,19 @@ const LPP_SIZE: Record<number, number> = {
   113: 6,
   115: 2,
   116: 2,
+  117: 2,
+  118: 4,
   120: 1,
   121: 2,
   125: 2,
+  128: 2,
+  130: 4,
+  132: 2,
+  133: 4,
+  134: 6,
+  135: 3,
   136: 9,
+  142: 1,
 }
 
 export const LPP_TEMP = 103
@@ -34,15 +43,19 @@ function viewOf(bytes: Uint8Array): DataView {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
-export function decodeLpp(buf: Uint8Array): LppRecord[] {
+export function decodeLpp(buf: Uint8Array, humidityBytes = 1): LppRecord[] {
   const out: LppRecord[] = []
   const view = viewOf(buf)
   let i = 0
   while (i + 2 <= buf.length) {
     const channel = buf[i]
     const type = buf[i + 1]
-    const size = LPP_SIZE[type]
-    if (size == null || i + 2 + size > buf.length) break
+    const size = type === LPP_HUMIDITY ? humidityBytes : LPP_SIZE[type]
+    if (size == null) {
+      i += 1
+      continue
+    }
+    if (i + 2 + size > buf.length) break
     const p = i + 2
     let value = Number.NaN
     switch (type) {
@@ -50,7 +63,7 @@ export function decodeLpp(buf: Uint8Array): LppRecord[] {
         value = view.getInt16(p, false) / 10
         break
       case LPP_HUMIDITY:
-        value = buf[p] / 2
+        value = (humidityBytes === 2 ? view.getUint16(p, false) : buf[p]) / 2
         break
       case LPP_PRESSURE:
         value = view.getUint16(p, false) / 10
@@ -59,7 +72,7 @@ export function decodeLpp(buf: Uint8Array): LppRecord[] {
         value = view.getUint16(p, false) / 100
         break
       case LPP_GENERIC:
-        value = view.getInt32(p, false)
+        value = view.getUint32(p, false)
         break
       case 2:
         value = view.getInt16(p, false) / 100
@@ -76,45 +89,40 @@ export function decodeLpp(buf: Uint8Array): LppRecord[] {
       default:
         break
     }
-    out.push({ channel, type, value })
+    if (Number.isFinite(value)) out.push({ channel, type, value })
     i += 2 + size
   }
   return out
 }
 
 export function readingsFromLpp(records: LppRecord[]): Partial<Reading> {
-  const by = new Map<number, LppRecord[]>()
-  for (const record of records) {
-    const list = by.get(record.channel) ?? []
-    list.push(record)
-    by.set(record.channel, list)
-  }
-  let envChannel: number | null = null
-  for (const [channel, list] of by) {
-    if (list.some((r) => r.type === LPP_TEMP) && list.some((r) => r.type === LPP_HUMIDITY)) {
-      envChannel = channel
-      break
-    }
-  }
   const reading: Partial<Reading> = {}
-  if (envChannel != null) {
-    const list = by.get(envChannel) ?? []
-    const temp = list.find((r) => r.type === LPP_TEMP)
-    const humidity = list.find((r) => r.type === LPP_HUMIDITY)
-    const pressure = list.find((r) => r.type === LPP_PRESSURE)
-    const gas = list.find((r) => r.type === LPP_GENERIC)
-    if (temp) reading.temperatureC = temp.value
-    if (humidity) reading.humidityPct = humidity.value
-    if (pressure) reading.pressureHpa = pressure.value
-    if (gas) reading.gasOhm = gas.value
-  } else {
-    const air = records.find((r) => r.type === LPP_TEMP && r.channel !== 1 && r.channel !== 7 && r.channel !== 8)
-    if (air) reading.temperatureC = air.value
-  }
-  const dew = records.find((r) => r.type === LPP_TEMP && r.channel === 7)
-  const feels = records.find((r) => r.type === LPP_TEMP && r.channel === 8)
+  const temps = records.filter((r) => r.type === LPP_TEMP)
+  const air = temps.find((r) => r.channel !== 1 && r.channel !== 7 && r.channel !== 8)
+  if (air) reading.temperatureC = air.value
+  const dew = temps.find((r) => r.channel === 7)
+  const feels = temps.find((r) => r.channel === 8)
   if (dew) reading.dewPointC = dew.value
   if (feels) reading.feelsLikeC = feels.value
+
+  const humidities = records.filter((r) => r.type === LPP_HUMIDITY)
+  const humidity = humidities.find((r) => air != null && r.channel === air.channel) ?? humidities[0]
+  if (humidity) reading.humidityPct = humidity.value
+
+  const pressures = records.filter((r) => r.type === LPP_PRESSURE)
+  const pressure = pressures.find((r) => air != null && r.channel === air.channel) ?? pressures[0]
+  if (pressure) reading.pressureHpa = pressure.value
+
+  const airChannel = air?.channel ?? humidity?.channel ?? pressure?.channel ?? null
+  const generics = records.filter((r) => r.type === LPP_GENERIC)
+  const gas = airChannel == null ? undefined : generics.find((r) => r.channel === airChannel)
+  if (gas) reading.gasOhm = gas.value
+  const iaq = generics.find((r) => r.channel === 3) ?? generics.find((r) => r !== gas)
+  if (iaq && iaq !== gas) reading.iaq = iaq.value
+
+  const co2 = records.find((r) => r.type === LPP_CONCENTRATION && (airChannel == null || r.channel === airChannel)) ?? records.find((r) => r.type === LPP_CONCENTRATION)
+  if (co2) reading.eco2Ppm = co2.value
+
   const percent = (channel: number) => records.find((r) => r.type === 120 && r.channel === channel)
   const frost = percent(4)
   const fire = percent(5)
@@ -122,17 +130,33 @@ export function readingsFromLpp(records: LppRecord[]): Partial<Reading> {
   if (frost) reading.frostScore = frost.value
   if (fire) reading.fireScore = fire.value
   if (smoke) reading.smokeScore = smoke.value
+
   const volts = records.filter((r) => r.type === LPP_VOLTAGE)
   const voltage = volts.find((r) => r.channel === 1) ?? volts[0]
   if (voltage) reading.batteryMv = Math.round(voltage.value * 1000)
-  for (const record of records) {
-    if (record.type === LPP_GENERIC && record.channel !== envChannel && record.value >= 0 && record.value <= 500) {
-      reading.iaq = record.value
-    }
-  }
-  const co2 = records.find((r) => r.type === LPP_CONCENTRATION)
-  if (co2) reading.eco2Ppm = co2.value
   return reading
+}
+
+function lppScore(reading: Partial<Reading>): number {
+  let score = 0
+  if (reading.temperatureC != null) score += 1
+  if (reading.humidityPct != null && reading.humidityPct > 0 && reading.humidityPct <= 100) score += 2
+  if (reading.pressureHpa != null && reading.pressureHpa >= 800 && reading.pressureHpa <= 1100) score += 2
+  if (reading.gasOhm != null && reading.gasOhm > 100) score += 2
+  if (reading.iaq != null) score += 1
+  if (reading.eco2Ppm != null) score += 1
+  if (reading.batteryMv != null && reading.batteryMv >= 2000 && reading.batteryMv <= 5000) score += 1
+  return score
+}
+
+export function readingsFromLppBuffer(buf: Uint8Array): Partial<Reading> {
+  const one = readingsFromLpp(decodeLpp(buf, 1))
+  const two = readingsFromLpp(decodeLpp(buf, 2))
+  return lppScore(two) > lppScore(one) ? two : one
+}
+
+export function lppBufferScore(buf: Uint8Array): number {
+  return lppScore(readingsFromLppBuffer(buf))
 }
 
 function i16(value: number): [number, number] {
@@ -194,6 +218,6 @@ export function encodeReadingLpp(reading: Reading): Uint8Array {
 }
 
 export function readingFromTelemetryFrame(frame: Uint8Array): Reading {
-  const partial = readingsFromLpp(decodeLpp(frame.subarray(8)))
+  const partial = readingsFromLppBuffer(frame.subarray(8))
   return { ...emptyReading(), ...partial }
 }
