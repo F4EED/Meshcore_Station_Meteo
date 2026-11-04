@@ -1,4 +1,4 @@
-import { BAND_FIELDS, type Band, type Cadence, type Reading } from '../model'
+import { BAND_FIELDS, emptyReading, type Band, type Cadence, type Reading } from '../model'
 import { CMD_STATION_GET_BAND, CMD_STATION_GET_READING, CMD_STATION_SET_BAND, MIN_UNIX, RESP_STATION_BAND, RESP_STATION_READING } from './codes'
 
 const F_TEMP = 1 << 0
@@ -112,6 +112,7 @@ export function decodeReading(frame: Uint8Array): Reading {
   const flags = view.getUint16(2, true)
   const epoch = view.getUint32(33, true)
   return {
+    ...emptyReading(),
     temperatureC: flags & F_TEMP ? readFloat(view, 4) : null,
     humidityPct: flags & F_HR ? readFloat(view, 8) : null,
     pressureHpa: flags & F_P ? readFloat(view, 12) : null,

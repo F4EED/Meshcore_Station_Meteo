@@ -46,19 +46,9 @@ function heatIndexC(temperatureC: number, humidityPct: number): number {
 }
 
 export function frostAssessment(temperatureC: number, humidityPct: number, dewC: number): FrostAssessment {
-  const spread = temperatureC - dewC
-  let gel = 0
-  if (temperatureC <= 0) {
-    const cold = clamp((0 - temperatureC) / 10, 0, 1)
-    const saturated = clamp((2 - spread) / 2, 0, 1)
-    gel = cold * saturated
-  }
-  let verglas = 0
-  if (temperatureC >= -2 && temperatureC <= 2) {
-    const nearZero = 1 - Math.min(Math.abs(temperatureC), 2) / 2
-    const wet = clamp((humidityPct - 85) / 15, 0, 1)
-    verglas = nearZero * wet
-  }
+  const spread = Math.max(0, temperatureC - dewC)
+  const gel = clamp((3 - temperatureC) / 3, 0, 1) * clamp((3 - spread) / 3, 0, 1)
+  const verglas = clamp((2 - Math.abs(temperatureC)) / 2, 0, 1) * clamp((humidityPct - 90) / 10, 0, 1)
   const score = Math.round(100 * Math.max(gel, verglas))
   let kind: FrostKind = 'aucun'
   if (score >= 20) kind = verglas > gel ? 'verglas' : 'gel'
@@ -67,7 +57,11 @@ export function frostAssessment(temperatureC: number, humidityPct: number, dewC:
 
 export function fireScore(temperatureC: number, humidityPct: number): number {
   const angstrom = humidityPct / 20 + (27 - temperatureC) / 10
-  return clamp(Math.round(((4 - angstrom) / 3) * 100), 0, 100)
+  return clamp(Math.round(((4 - angstrom) / 2) * 100), 0, 100)
+}
+
+export function smokeIndex(iaq: number): number {
+  return clamp(Math.round(((iaq - 100) / 200) * 100), 0, 100)
 }
 
 export function smokeLikely(iaq: number | null, gasOhm: number | null, iaqBand: Band, gasBand: Band): boolean {

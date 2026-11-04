@@ -64,7 +64,7 @@ button.ghost { background: transparent; }
 .hero-value { font-size: clamp(3.2rem, 12vw, 5.5rem); line-height: 0.95; }
 .hero-value span, .metric-value span { font-size: 0.45em; color: var(--muted); margin-left: 0.25rem; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; }
-.indices { grid-template-columns: 1fr 1fr; margin-top: 0.8rem; }
+.indices { grid-template-columns: repeat(3, 1fr); margin-top: 0.8rem; }
 .metric header { justify-content: space-between; align-items: flex-start; }
 .metric h2 { font-size: 1.05rem; }
 .metric-value { font-size: 1.7rem; }

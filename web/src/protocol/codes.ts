@@ -3,6 +3,7 @@ export const APP_VERSION = '0.0.1'
 export const APP_TARGET_VER = 11
 
 export const CMD_APP_START = 0x01
+export const CMD_SYNC_NEXT_MESSAGE = 0x0a
 export const CMD_GET_DEVICE_TIME = 0x05
 export const CMD_SET_DEVICE_TIME = 0x06
 export const CMD_SET_RADIO_PARAMS = 0x0b
@@ -27,6 +28,10 @@ export const RESP_BATT = 0x0c
 export const RESP_DEVICE = 0x0d
 export const RESP_CUSTOM_VARS = 0x15
 export const RESP_CHANNEL = 0x12
+export const RESP_CHANNEL_MSG = 0x08
+export const RESP_CHANNEL_MSG_V3 = 0x11
+export const RESP_NO_MORE_MSGS = 0x0a
+export const RESP_CHANNEL_DATA = 0x1b
 export const RESP_FLOOD = 0x1c
 export const RESP_STATION_READING = 0x70
 export const RESP_STATION_BAND = 0x71
@@ -55,8 +60,10 @@ export const RADIO_BW_MILLIKHZ = 62500
 export const RADIO_SF = 8
 export const RADIO_CR = 8
 
-export const FACTORY_CHANNEL_NAME = '#germacrise_publique'
-export const FACTORY_REGION = 'fr-ara'
+export const STMET_DATA_TYPE = 0xff42
+
+export const FACTORY_CHANNEL_NAME = '#germacrisepublic'
+export const FACTORY_REGION = 'fr-42'
 export const FACTORY_CHANNEL_SLOT = 1
 
 export const MIN_UNIX = 1_577_836_800

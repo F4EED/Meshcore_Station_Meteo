@@ -1,6 +1,6 @@
 import { BAND_META, BAND_ORDER, type BandId, type LiveReading } from '../model'
 import { FACTORY_BANDS, type BandSet } from './factory'
-import { dewPointC, feelsLikeC, fireScore, frostAssessment, smokeLikely } from './derived'
+import { dewPointC, feelsLikeC, fireScore, frostAssessment, smokeIndex, smokeLikely } from './derived'
 import { LEVEL_LABEL, metricLevel, type Level } from './levels'
 
 export type MetricCard = {
@@ -18,7 +18,8 @@ export type PresentedWeather = {
   cards: MetricCard[]
   frost: MetricCard
   fire: MetricCard
-  smoke: boolean
+  smoke: MetricCard
+  smokeAlert: boolean
   cadenceLabel: string | null
   intervalLabel: string | null
 }
@@ -55,12 +56,14 @@ function card(id: string, label: string, value: string, unit: string, level: Lev
 export function presentWeather(reading: LiveReading, bands: BandSet): PresentedWeather {
   const temp = reading.temperatureC
   const hr = reading.humidityPct
-  const dew = temp != null && hr != null ? dewPointC(temp, hr) : null
-  const feels = temp != null && hr != null ? feelsLikeC(temp, hr) : null
+  const dew = reading.dewPointC ?? (temp != null && hr != null ? dewPointC(temp, hr) : null)
+  const feels = reading.feelsLikeC ?? (temp != null && hr != null ? feelsLikeC(temp, hr) : null)
   const frost = temp != null && hr != null && dew != null ? frostAssessment(temp, hr, dew) : null
-  const fire = temp != null && hr != null ? fireScore(temp, hr) : null
+  const frostScore = reading.frostScore ?? frost?.score ?? null
+  const fire = reading.fireScore ?? (temp != null && hr != null ? fireScore(temp, hr) : null)
+  const smokeScore = reading.smokeScore ?? (reading.iaq != null ? smokeIndex(reading.iaq) : null)
   const tempLevel = metricLevel(temp, bands.temp, 'twoSided')
-  const frostLevel = metricLevel(frost?.score ?? null, bands.frost, 'lowerBetter')
+  const frostLevel = metricLevel(frostScore, bands.frost, 'lowerBetter')
   const fireLevel = metricLevel(fire, bands.fire, 'lowerBetter')
   const fireWord = fireLevel === 'alert' ? 'fort' : fireLevel === 'warn' ? 'élevé' : fire == null ? 'absent' : 'faible'
   const frostWord = frost?.kind === 'gel' ? 'gel' : frost?.kind === 'verglas' ? 'verglas' : 'aucun'
@@ -70,8 +73,8 @@ export function presentWeather(reading: LiveReading, bands: BandSet): PresentedW
     cards: [
       card('humidity', 'Humidité', num(hr, 0), '% HR', metricLevel(hr, bands.humidity, 'twoSided')),
       card('pressure', 'Pression', num(reading.pressureHpa, 1), 'hPa', metricLevel(reading.pressureHpa, bands.pressure, 'twoSided')),
-      card('dew', 'Point de rosée', num(dew, 1), '°C', 'none', 'Magnus–Tetens'),
-      card('feels', 'Ressenti', num(feels, 1), '°C', 'none', temp != null && temp >= 27 ? 'Indice de chaleur' : 'Steadman, vent nul'),
+      card('dew', 'Point de rosée', num(dew, 1), '°C', 'none', reading.dewPointC != null ? 'Reçu' : 'Magnus–Tetens'),
+      card('feels', 'Ressenti', num(feels, 1), '°C', 'none', reading.feelsLikeC != null ? 'Reçu' : temp != null && temp >= 27 ? 'Indice de chaleur' : 'Steadman, vent nul'),
       card('gas', 'Gaz', num(reading.gasOhm, 0), 'Ω', metricLevel(reading.gasOhm, bands.gas, 'lowerBetter')),
       card('iaq', 'IAQ', num(reading.iaq, 0), '', metricLevel(reading.iaq, bands.iaq, 'lowerBetter'), 'Indice maison'),
       card(
@@ -91,9 +94,10 @@ export function presentWeather(reading: LiveReading, bands: BandSet): PresentedW
         reading.batteryMv == null ? undefined : `${num(reading.batteryMv, 0)} mV`,
       ),
     ],
-    frost: card('frost', 'Gel / verglas', frost ? num(frost.score, 0) : '—', '/ 100', frostLevel, frostWord),
-    fire: card('fire', 'Incendie', fire == null ? '—' : num(fire, 0), '/ 100', fireLevel, `${fireWord} · pas un IFM`),
-    smoke: smokeLikely(reading.iaq, reading.gasOhm, bands.iaq, bands.gas),
+    frost: card('frost', 'Gel / verglas', frostScore == null ? '—' : num(frostScore, 0), '/ 100', frostLevel, reading.frostScore != null ? `${frostWord} · reçu` : frostWord),
+    fire: card('fire', 'Incendie', fire == null ? '—' : num(fire, 0), '/ 100', fireLevel, reading.fireScore != null ? `${fireWord} · reçu` : `${fireWord} · pas un IFM`),
+    smoke: card('smoke', 'Fumée', smokeScore == null ? '—' : num(smokeScore, 0), '/ 100', 'none', reading.smokeScore != null ? 'Reçu' : 'IAQ déjà élevé'),
+    smokeAlert: (smokeScore != null && smokeScore >= 20) || smokeLikely(reading.iaq, reading.gasOhm, bands.iaq, bands.gas),
     cadenceLabel:
       reading.cadence === 'normal' ? 'Créneau calme' : reading.cadence === 'hors-plage' ? 'Hors plage' : reading.cadence === 'choc' ? 'Choc' : null,
     intervalLabel: reading.intervalS != null ? formatInterval(reading.intervalS) : null,

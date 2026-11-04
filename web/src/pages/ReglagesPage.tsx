@@ -69,7 +69,7 @@ export function ReglagesPage() {
     const keyText = draft.channelKeyHex.trim()
     const secret = keyText ? parseHex(keyText) : new Uint8Array(16)
     if (!secret || secret.length !== 16) {
-      setFormError('La clé privée fait 32 caractères hexadécimaux, ou reste vide pour #germacrise_publique')
+      setFormError('La clé privée fait 32 caractères hexadécimaux, ou reste vide pour #germacrisepublic')
       return
     }
     station.updateSettings({ channelName: name, channelKeyHex: keyText.toLowerCase(), channelSlot: slot })
@@ -145,7 +145,7 @@ export function ReglagesPage() {
           }}
         >
           <h3>Canal</h3>
-          <p className="note">Usine : #germacrise_publique, public, sans clé à saisir, emplacement 1. L’emplacement 0 est souvent le canal Public.</p>
+          <p className="note">Usine : #germacrisepublic, public, sans clé à saisir, emplacement 1. La connexion ne renomme pas un emplacement déjà écrit. L’emplacement 0 est souvent le canal Public.</p>
           <label>
             Emplacement
             <input data-testid="channel-slot" inputMode="numeric" value={draft.channelSlot} onChange={(event) => setDraft({ ...draft, channelSlot: event.target.value })} />
@@ -174,7 +174,7 @@ export function ReglagesPage() {
                 })
               }
             >
-              Rétablir #germacrise_publique
+              Rétablir #germacrisepublic
             </button>
             <button type="submit" className="primary" data-testid="send-channel" disabled={!connected || station.busy}>
               Créer le canal
@@ -206,7 +206,7 @@ export function ReglagesPage() {
         >
           <h3>Région par défaut</h3>
           <p className="note">
-            Usine du canal #germacrise_publique : fr-ara. Le nom part dans la variable <code>region</code>. Sans clé de transport, aucune clé de flood n’est inventée. Le nœud peut démarrer en fr-42.
+            Usine : fr-42, flood du canal #germacrisepublic. Le nom part dans la variable <code>region</code> seulement quand on l’enregistre. Sans clé de transport, aucune clé de flood n’est inventée.
           </p>
           <label>
             Région
@@ -222,7 +222,7 @@ export function ReglagesPage() {
           </p>
           <div className="row">
             <button type="button" className="ghost" onClick={() => setDraft({ ...draft, region: FACTORY_REGION, floodKeyHex: '' })}>
-              Rétablir fr-ara
+              Rétablir fr-42
             </button>
             <button type="submit" className="primary" data-testid="send-region" disabled={!connected || station.busy}>
               Enregistrer la région

@@ -33,12 +33,15 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return base
     const parsed = JSON.parse(raw) as Partial<Settings>
-    const legacyName = !parsed.channelName || parsed.channelName === 'Germacrise' || parsed.channelName === '#GerMaCrise_publique'
+    const legacyNames = new Set(['Germacrise', '#GerMaCrise_publique', '#germacrise_publique', '#GerMaCrise'])
+    const legacyName = !parsed.channelName || legacyNames.has(parsed.channelName)
+    const legacyRegion = !parsed.region || parsed.region === 'fr-ara'
     const legacyKey = !parsed.channelKeyHex || parsed.channelKeyHex.toLowerCase() === 'dce843f4d5c2ed416b4ce17db83df618'
     return {
       ...base,
       ...parsed,
       channelName: legacyName ? base.channelName : (parsed.channelName ?? base.channelName),
+      region: legacyRegion ? base.region : (parsed.region ?? base.region),
       channelKeyHex: legacyKey ? '' : (parsed.channelKeyHex ?? ''),
       bands: parsed.bands ? { ...base.bands, ...parsed.bands } : base.bands,
     }

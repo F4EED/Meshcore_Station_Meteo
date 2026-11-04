@@ -20,7 +20,16 @@ export function MeteoPage() {
   }, [poll, status])
 
   const reading = snapshot?.reading
+  const companion = snapshot?.self != null && snapshot.self.advType !== 4
   if (!reading || snapshot.readingSource === 'none') {
+    if (companion && status === 'connected') {
+      return (
+        <section className="panel empty">
+          <h2>En écoute sur #germacrisepublic</h2>
+          <p>Le compagnon USB ne mesure pas l’air. La page se remplit avec le flood fr-42 : le texte de mto_now, et la trame 0x1B de type 0xFF42.</p>
+        </section>
+      )
+    }
     return (
       <section className="panel empty">
         <h2>Pas encore de mesure</h2>
@@ -31,12 +40,19 @@ export function MeteoPage() {
 
   const view = presentWeather(reading, settings.bands)
   const age = snapshot.readingAt ? formatAge(now - snapshot.readingAt) : ''
-  const source = snapshot.readingSource === 'station' ? 'trame station' : 'télémétrie LPP'
+  const source =
+    snapshot.readingSource === 'station'
+      ? 'trame station'
+      : snapshot.readingSource === 'radio'
+        ? 'flood 0xFF42'
+        : snapshot.readingSource === 'texte'
+          ? 'texte #germacrisepublic'
+          : 'télémétrie LPP'
 
   return (
     <section aria-live="polite">
       {linkKind === 'demo' ? <p className="banner">Données simulées, aucune radio.</p> : null}
-      {view.smoke ? <p className="banner alert">Fumée éventuelle : IAQ ou gaz hors seuil. Ce n’est pas un départ de feu.</p> : null}
+      {view.smokeAlert ? <p className="banner alert">Fumée éventuelle : IAQ ou gaz hors seuil. Ce n’est pas un départ de feu.</p> : null}
       <article className={`hero level-${view.hero.level}`} data-testid="metric-temp">
         <p className="eyebrow">Température</p>
         <p className="hero-value">
@@ -60,7 +76,7 @@ export function MeteoPage() {
         ))}
       </div>
       <div className="metrics indices">
-        {[view.frost, view.fire].map((item) => (
+        {[view.frost, view.fire, view.smoke].map((item) => (
           <article key={item.id} className="metric feature" data-testid={`metric-${item.id}`}>
             <header>
               <h2>{item.label}</h2>
@@ -79,7 +95,7 @@ export function MeteoPage() {
         <span>
           {source} · {age}
         </span>
-        {view.smoke ? null : <span>Pas de signal fumée</span>}
+        {view.smokeAlert ? null : <span>Pas de signal fumée</span>}
       </p>
     </section>
   )

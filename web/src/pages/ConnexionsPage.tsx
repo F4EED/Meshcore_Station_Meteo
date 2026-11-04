@@ -8,7 +8,7 @@ export function ConnexionsPage() {
     <section className="stack">
       <header className="page-head">
         <h2>Connexions</h2>
-        <p>Le client parle au nœud comme un client MeshCore : USB série, Bluetooth Nordic UART, ou HTTP local.</p>
+        <p>Le client parle au nœud comme un client MeshCore. Sur un compagnon USB, il écoute le flood #germacrisepublic, pas la température du dongle.</p>
       </header>
       {error ? <p className="banner alert">{error}</p> : null}
       <div className="cards">

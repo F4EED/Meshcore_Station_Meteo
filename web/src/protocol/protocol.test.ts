@@ -3,19 +3,20 @@ import { FACTORY_CHANNEL_NAME } from './codes'
 import { encodeRadioProfile, encodeSetChannel } from './companion'
 import { encodeHostFrame, StreamFrameParser } from './frame'
 import { decodeLpp, encodeReadingLpp, readingsFromLpp } from './lpp'
+import { parseMeteoLine } from './radio'
 import { decodeReading, encodeReading } from './station'
 import { emptyReading } from '../model'
 import { FACTORY_BANDS } from '../weather/factory'
 
 describe('trames compagnon', () => {
-  it('écrit #germacrise_publique sans clé', () => {
+  it('écrit #germacrisepublic sans clé', () => {
     const frame = encodeSetChannel(1, FACTORY_CHANNEL_NAME, new Uint8Array(16))
     expect(frame[0]).toBe(0x20)
     expect(frame[1]).toBe(1)
     expect(frame).toHaveLength(50)
     const nameField = frame.subarray(2, 34)
     const end = nameField.indexOf(0)
-    expect(new TextDecoder().decode(nameField.subarray(0, end))).toBe('#germacrise_publique')
+    expect(new TextDecoder().decode(nameField.subarray(0, end))).toBe('#germacrisepublic')
     expect(nameField.subarray(end).every((byte) => byte === 0)).toBe(true)
     expect(frame.subarray(34).every((byte) => byte === 0)).toBe(true)
   })
@@ -81,6 +82,23 @@ describe('station et LPP', () => {
     expect(partial.gasOhm).toBeCloseTo(50_000, 0)
     expect(partial.iaq).toBe(50)
     expect(partial.batteryMv).toBe(4000)
+    expect(partial.dewPointC).toBeCloseTo(4.6, 1)
+    expect(partial.feelsLikeC).toBeGreaterThan(17)
+    expect(partial.frostScore).toBe(0)
+    expect(partial.fireScore).toBeGreaterThan(0)
     expect(FACTORY_BANDS.temp.mean).toBe(15)
+  })
+
+  it('ignore la température du micro et lit la ligne mto_now', () => {
+    const mcu = Uint8Array.of(1, 103, 0x01, 0x86)
+    expect(readingsFromLpp(decodeLpp(mcu)).temperatureC).toBeUndefined()
+    const line = parseMeteoLine('F4EED-Meteo: T 15.0 HR 55.0 P 1013.2 rosée 6.0 ressenti 14.1 gel 0 feu 2 fumée 0')
+    expect(line?.temperatureC).toBeCloseTo(15, 1)
+    expect(line?.dewPointC).toBeCloseTo(6, 1)
+    expect(line?.feelsLikeC).toBeCloseTo(14.1, 1)
+    expect(line?.frostScore).toBe(0)
+    expect(line?.fireScore).toBe(2)
+    expect(line?.smokeScore).toBe(0)
+    expect(parseMeteoLine('Pager: mto_now')).toBeNull()
   })
 })

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { FACTORY_CHANNEL_NAME } from '../protocol/codes'
+import { FACTORY_CHANNEL_NAME, STMET_DATA_TYPE } from '../protocol/codes'
 import { emptyReading } from '../model'
+import { encodeReadingLpp } from '../protocol/lpp'
+import { encodeChannelDataFrame, encodeChannelTextFrame } from '../protocol/radio'
 import { createDemoLink } from './demo'
 import { StationFirmwareSim } from './firmware-sim'
 import { HttpLink } from './http'
@@ -42,12 +44,12 @@ describe('session station', () => {
     expect(opened.bands?.[3].veryHigh).toBeNull()
 
     const created = await session.createChannel(1, FACTORY_CHANNEL_NAME, new Uint8Array(16))
-    expect(created.channels.find((channel) => channel.index === 1)?.name).toBe('#germacrise_publique')
+    expect(created.channels.find((channel) => channel.index === 1)?.name).toBe(FACTORY_CHANNEL_NAME)
     expect(created.channels.find((channel) => channel.index === 1)?.secretHex).toBe('00'.repeat(16))
 
-    const region = await session.setRegion('fr-ara', null)
-    expect(region.region).toBe('fr-ara')
-    expect(sim.region).toBe('fr-ara')
+    const region = await session.setRegion('fr-42', null)
+    expect(region.region).toBe('fr-42')
+    expect(sim.region).toBe('fr-42')
     expect(sim.hasFlood).toBe(false)
 
     const bands = opened.bands!.map((band) => ({ ...band }))
@@ -92,5 +94,65 @@ describe('session station', () => {
     expect(applied.self?.bwKhz).toBeCloseTo(62.5, 2)
     expect(applied.self?.cr).toBe(8)
     expect(mock.sim.repeat).toBe(false)
+  })
+
+  it('décode le 0x1B 0xFF42 du compagnon sans sonder le LPP local', async () => {
+    const sim = new StationFirmwareSim()
+    sim.advType = 1
+    sim.stationExtension = false
+    const lpp = encodeReadingLpp({
+      ...emptyReading(),
+      temperatureC: 15,
+      humidityPct: 55,
+      pressureHpa: 1013.2,
+      gasOhm: 50_000,
+      iaq: 42,
+      batteryMv: 3900,
+      dewPointC: 6,
+      feelsLikeC: 14.1,
+      frostScore: 0,
+      fireScore: 2,
+      smokeScore: 0,
+    })
+    sim.radioQueue.push(encodeChannelDataFrame(1, STMET_DATA_TYPE, lpp))
+    sim.radioQueue.push(encodeChannelTextFrame(1, 'F4EED-Meteo: T 15.0 HR 55.0 P 1013.2 rosée 6.0 ressenti 14.1 gel 0 feu 2 fumée 0'))
+    const session = new StationSession(createDemoLink(sim))
+    const snap = await session.open()
+    expect(sim.selfTelemetryHits).toBe(0)
+    expect(snap.self?.advType).toBe(1)
+    expect(snap.readingSource).toBe('radio')
+    expect(snap.reading?.temperatureC).toBeCloseTo(15, 1)
+    expect(snap.reading?.humidityPct).toBeCloseTo(55, 1)
+    expect(snap.reading?.pressureHpa).toBeCloseTo(1013.2, 1)
+    expect(snap.reading?.gasOhm).toBeCloseTo(50_000, 0)
+    expect(snap.reading?.iaq).toBe(42)
+    expect(snap.reading?.dewPointC).toBeCloseTo(6, 1)
+    expect(snap.reading?.feelsLikeC).toBeCloseTo(14.1, 1)
+    expect(snap.reading?.frostScore).toBe(0)
+    expect(snap.reading?.fireScore).toBe(2)
+    expect(snap.reading?.smokeScore).toBe(0)
+    expect(snap.reading?.batteryMv).toBe(3900)
+    const kept = await session.poll()
+    expect(kept.reading?.gasOhm).toBeCloseTo(50_000, 0)
+    expect(sim.selfTelemetryHits).toBe(0)
+  })
+
+  it('lit le texte mto_now et ignore la commande seule', async () => {
+    const sim = new StationFirmwareSim()
+    sim.advType = 1
+    sim.stationExtension = false
+    sim.radioQueue.push(encodeChannelTextFrame(0, 'Pager: mto_now'))
+    sim.radioQueue.push(encodeChannelTextFrame(1, 'F4EED-Meteo: T 12.5 HR 80.0 P 1008.0 rosée 9.1 ressenti 12.0 gel 40 feu 0 fumée 5'))
+    const session = new StationSession(createDemoLink(sim))
+    const snap = await session.open()
+    expect(snap.readingSource).toBe('texte')
+    expect(snap.reading?.temperatureC).toBeCloseTo(12.5, 1)
+    expect(snap.reading?.humidityPct).toBeCloseTo(80, 1)
+    expect(snap.reading?.dewPointC).toBeCloseTo(9.1, 1)
+    expect(snap.reading?.feelsLikeC).toBeCloseTo(12, 1)
+    expect(snap.reading?.frostScore).toBe(40)
+    expect(snap.reading?.fireScore).toBe(0)
+    expect(snap.reading?.smokeScore).toBe(5)
+    expect(sim.selfTelemetryHits).toBe(0)
   })
 })

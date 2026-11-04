@@ -1,4 +1,4 @@
-import { BAND_ORDER, type Band, type LiveReading, withEstimatedEco2 } from '../model'
+import { BAND_ORDER, type Band, type LiveReading, emptyReading, withEstimatedEco2 } from '../model'
 import {
   encodeAppStart,
   encodeCustomVar,
@@ -23,13 +23,14 @@ import {
   type DeviceInfo,
   type SelfInfo,
 } from '../protocol/companion'
-import { IGNORABLE_PUSH, PUSH_TELEM, RESP_BATT, RESP_CHANNEL, RESP_CUSTOM_VARS, RESP_DEVICE, RESP_FLOOD, RESP_OK, RESP_SELF } from '../protocol/codes'
+import { CMD_SYNC_NEXT_MESSAGE, PUSH_TELEM, RESP_BATT, RESP_CHANNEL, RESP_CHANNEL_DATA, RESP_CHANNEL_MSG, RESP_CHANNEL_MSG_V3, RESP_CUSTOM_VARS, RESP_DEVICE, RESP_FLOOD, RESP_NO_MORE_MSGS, RESP_OK, RESP_SELF } from '../protocol/codes'
 import { readingFromTelemetryFrame } from '../protocol/lpp'
+import { readingFromCompanionFrame } from '../protocol/radio'
 import { decodeBand, decodeReading, encodeGetBand, encodeGetReading, encodeSetBand } from '../protocol/station'
 import { BAND_META } from '../model'
 import type { Link } from './types'
 
-export type ReadingSource = 'station' | 'lpp' | 'none'
+export type ReadingSource = 'station' | 'lpp' | 'radio' | 'texte' | 'none'
 
 export type Snapshot = {
   self: SelfInfo | null
@@ -67,10 +68,44 @@ export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : 'Erreur inconnue'
 }
 
+const RADIO_REPLY = new Set([RESP_CHANNEL_MSG, RESP_CHANNEL_MSG_V3, RESP_CHANNEL_DATA, 0x07, 0x10])
+
+function blankReading() {
+  return withEstimatedEco2(emptyReading())
+}
+
+function mergeLive(prev: LiveReading, next: LiveReading): LiveReading {
+  const out: LiveReading = { ...prev }
+  const keys = [
+    'temperatureC',
+    'humidityPct',
+    'pressureHpa',
+    'gasOhm',
+    'iaq',
+    'eco2Ppm',
+    'batteryMv',
+    'intervalS',
+    'epoch',
+    'dewPointC',
+    'feelsLikeC',
+    'frostScore',
+    'fireScore',
+    'smokeScore',
+  ] as const
+  for (const key of keys) {
+    const value = next[key]
+    if (typeof value === 'number') out[key] = value
+  }
+  if (next.cadence != null) out.cadence = next.cadence
+  if (next.eco2Ppm != null) out.eco2Estimated = next.eco2Estimated
+  return out
+}
+
 export class StationSession {
   private tail: Promise<void> = Promise.resolve()
   private state: Snapshot = blank()
   private closed = false
+  private stashedRadio: Uint8Array[] = []
 
   constructor(
     private readonly link: Link,
@@ -213,9 +248,12 @@ export class StationSession {
       this.onLog(errorText(err))
     }
 
-    const measured = await this.readMeasurement()
-    const reading = await this.mergeBattery(measured.reading)
+    const companion = self.advType !== 4
     const bands = await this.readBands()
+    const heard = companion ? await this.readCompanion() : null
+    if (companion && !heard) this.onLog('Compagnon en écoute sur #germacrisepublic. La sonde locale n’est pas lue.')
+    const measured = companion ? (heard ?? { reading: blankReading(), source: 'none' as const }) : await this.readMeasurement()
+    const reading = companion ? measured.reading : await this.mergeBattery(measured.reading)
     this.state = {
       self,
       device,
@@ -234,6 +272,15 @@ export class StationSession {
   }
 
   private async pollInner(): Promise<Snapshot> {
+    if (this.state.self && this.state.self.advType !== 4) {
+      const measured = await this.readCompanion()
+      if (!measured) return this.snapshot()
+      this.state.reading = measured.reading
+      this.state.readingSource = measured.source
+      this.state.readingAt = Date.now()
+      this.state.stationReading = false
+      return this.snapshot()
+    }
     const measured = await this.readMeasurement()
     this.state.reading = await this.mergeBattery(measured.reading)
     this.state.readingSource = measured.source
@@ -269,14 +316,48 @@ export class StationSession {
       const frame = await this.req(Uint8Array.of(0x27, 0, 0, 0), (item) => item[0] === PUSH_TELEM || isError(item))
       if (isError(frame)) {
         this.onLog(packetErrorMessage(frame))
-        return { reading: withEstimatedEco2({ temperatureC: null, humidityPct: null, pressureHpa: null, gasOhm: null, iaq: null, eco2Ppm: null, batteryMv: null, cadence: null, intervalS: null, epoch: null }), source: 'none' }
+        return { reading: blankReading(), source: 'none' }
       }
       this.onLog('Mesure LPP reçue')
       return { reading: withEstimatedEco2(readingFromTelemetryFrame(frame)), source: 'lpp' }
     } catch (err) {
       this.onLog(errorText(err))
-      return { reading: withEstimatedEco2({ temperatureC: null, humidityPct: null, pressureHpa: null, gasOhm: null, iaq: null, eco2Ppm: null, batteryMv: null, cadence: null, intervalS: null, epoch: null }), source: 'none' }
+      return { reading: blankReading(), source: 'none' }
     }
+  }
+
+  private async readCompanion(): Promise<{ reading: LiveReading; source: 'radio' | 'texte' } | null> {
+    let reading: LiveReading | null = null
+    let source: 'radio' | 'texte' | null = null
+    const take = (frame: Uint8Array) => {
+      const hit = readingFromCompanionFrame(frame)
+      if (!hit) return
+      const next = withEstimatedEco2(hit.reading)
+      reading = reading ? mergeLive(reading, next) : next
+      source = hit.source === 'radio' || source == null ? hit.source : source
+      this.onLog(hit.source === 'texte' ? 'Texte station sur #germacrisepublic' : 'Flood 0xFF42 reçu (0x1B)')
+    }
+    while (this.stashedRadio.length) {
+      const frame = this.stashedRadio.shift()
+      if (frame) take(frame)
+    }
+    for (let turn = 0; turn < 16; turn += 1) {
+      let frame: Uint8Array
+      try {
+        frame = await this.req(
+          Uint8Array.of(CMD_SYNC_NEXT_MESSAGE),
+          (item) => item[0] === RESP_NO_MORE_MSGS || RADIO_REPLY.has(item[0]) || isError(item),
+          2000,
+        )
+      } catch (err) {
+        this.onLog(errorText(err))
+        break
+      }
+      if (isError(frame) || frame[0] === RESP_NO_MORE_MSGS) break
+      take(frame)
+    }
+    if (!reading || !source) return null
+    return { reading, source }
   }
 
   private async readBands(): Promise<Band[] | null> {
@@ -322,7 +403,11 @@ export class StationSession {
       const left = deadline - Date.now()
       if (left <= 0) throw new Error('Délai dépassé')
       const frame = await this.link.nextFrame(left)
-      if (IGNORABLE_PUSH.has(frame[0])) continue
+      if (frame[0] >= 0x80 && !accept(frame)) continue
+      if (!accept(frame) && RADIO_REPLY.has(frame[0])) {
+        this.stashedRadio.push(frame)
+        continue
+      }
       if (accept(frame)) return frame
       throw new Error(`Réponse inattendue 0x${frame[0].toString(16)}`)
     }

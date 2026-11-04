@@ -19,6 +19,11 @@ export type Reading = {
   cadence: Cadence | null
   intervalS: number | null
   epoch: number | null
+  dewPointC: number | null
+  feelsLikeC: number | null
+  frostScore: number | null
+  fireScore: number | null
+  smokeScore: number | null
 }
 
 export type LiveReading = Reading & { eco2Estimated: boolean }
@@ -60,6 +65,11 @@ export function emptyReading(): Reading {
     cadence: null,
     intervalS: null,
     epoch: null,
+    dewPointC: null,
+    feelsLikeC: null,
+    frostScore: null,
+    fireScore: null,
+    smokeScore: null,
   }
 }
 

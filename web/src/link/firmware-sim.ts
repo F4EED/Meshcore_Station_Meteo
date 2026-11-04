@@ -14,6 +14,7 @@ import {
   CMD_STATION_GET_BAND,
   CMD_STATION_GET_READING,
   CMD_STATION_SET_BAND,
+  CMD_SYNC_NEXT_MESSAGE,
   CMD_TELEMETRY,
   ERR_ILLEGAL,
   ERR_NOT_FOUND,
@@ -30,6 +31,7 @@ import {
   RESP_DEVICE,
   RESP_ERR,
   RESP_FLOOD,
+  RESP_NO_MORE_MSGS,
   RESP_OK,
   RESP_SELF,
 } from '../protocol/codes'
@@ -55,6 +57,9 @@ function emptySlot(): Slot {
 
 export class StationFirmwareSim {
   stationExtension = true
+  advType = 0x04
+  radioQueue: Uint8Array[] = []
+  selfTelemetryHits = 0
   bands: BandSet = cloneBandSet()
   channels: Slot[] = Array.from({ length: 8 }, emptySlot)
   region = ''
@@ -97,7 +102,12 @@ export class StationFirmwareSim {
         return this.setFlood(frame)
       case CMD_SET_RADIO_PARAMS:
         return this.setRadio(frame)
+      case CMD_SYNC_NEXT_MESSAGE: {
+        const next = this.radioQueue.shift()
+        return next ?? Uint8Array.of(RESP_NO_MORE_MSGS)
+      }
       case CMD_TELEMETRY:
+        if (frame.length === 4) this.selfTelemetryHits += 1
         return frame.length === 4 ? this.telemetry() : error(ERR_NOT_FOUND)
       case CMD_STATION_GET_READING:
         return this.stationExtension ? encodeReading(this.sample()) : error(ERR_UNSUPPORTED)
@@ -153,7 +163,7 @@ export class StationFirmwareSim {
     const buf = new Uint8Array(58 + name.length)
     const view = new DataView(buf.buffer)
     buf[0] = RESP_SELF
-    buf[1] = 0x04
+    buf[1] = this.advType
     buf[2] = 14
     buf[3] = 22
     buf[4] = 0xf4

@@ -20,8 +20,16 @@ describe('grandeurs dérivées', () => {
     const cold = frostAssessment(-5, 96, dew!)
     expect(cold.kind).toBe('gel')
     expect(cold.score).toBeGreaterThan(20)
+    expect(frostAssessment(-1, 95, dewPointC(-1, 95)!).score).toBe(77)
+    expect(frostAssessment(0, 100, dewPointC(0, 100)!).score).toBe(100)
+    expect(frostAssessment(1, 98, dewPointC(1, 98)!).score).toBe(60)
     const mildDew = dewPointC(15, 55)!
     expect(frostAssessment(15, 55, mildDew).kind).toBe('aucun')
+    expect(frostAssessment(15, 55, mildDew).score).toBe(0)
+  })
+
+  it('calcule le ressenti Steadman à 15 °C', () => {
+    expect(feelsLikeC(15, 55)).toBeCloseTo(14.1, 1)
   })
 
   it('monte l’indice feu quand il fait chaud et sec', () => {
