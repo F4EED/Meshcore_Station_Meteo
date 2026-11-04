@@ -7,6 +7,7 @@
 #include "WeatherCadence.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,6 +220,128 @@ static void testBands() {
   expect(parseBandLine("# commentaire", &parsed), "commentaire");
 }
 
+static uint32_t rotr32(uint32_t x, uint32_t n) {
+  return (x >> n) | (x << (32u - n));
+}
+
+static void sha256_short(const uint8_t* msg, size_t len, uint8_t out[32]) {
+  static const uint32_t k[64] = {
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+  uint8_t block[64];
+  memset(block, 0, sizeof(block));
+  if (len > 55) {
+    out[0] = 0;
+    return;
+  }
+  if (len) {
+    memcpy(block, msg, len);
+  }
+  block[len] = 0x80;
+  uint64_t bits = static_cast<uint64_t>(len) * 8u;
+  for (int i = 0; i < 8; ++i) {
+    block[63 - i] = static_cast<uint8_t>(bits >> (8 * i));
+  }
+  uint32_t s[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+  uint32_t w[64];
+  for (int i = 0; i < 16; ++i) {
+    w[i] = (uint32_t)block[i * 4] << 24 | (uint32_t)block[i * 4 + 1] << 16 | (uint32_t)block[i * 4 + 2] << 8 |
+           (uint32_t)block[i * 4 + 3];
+  }
+  for (int i = 16; i < 64; ++i) {
+    uint32_t s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3);
+    uint32_t s1 = rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10);
+    w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+  }
+  uint32_t a = s[0], b = s[1], c = s[2], d = s[3], e = s[4], f = s[5], g = s[6], h = s[7];
+  for (int i = 0; i < 64; ++i) {
+    uint32_t S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+    uint32_t ch = (e & f) ^ ((~e) & g);
+    uint32_t t1 = h + S1 + ch + k[i] + w[i];
+    uint32_t S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+    uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + S0 + maj;
+  }
+  s[0] += a;
+  s[1] += b;
+  s[2] += c;
+  s[3] += d;
+  s[4] += e;
+  s[5] += f;
+  s[6] += g;
+  s[7] += h;
+  for (int i = 0; i < 8; ++i) {
+    out[i * 4] = static_cast<uint8_t>(s[i] >> 24);
+    out[i * 4 + 1] = static_cast<uint8_t>(s[i] >> 16);
+    out[i * 4 + 2] = static_cast<uint8_t>(s[i] >> 8);
+    out[i * 4 + 3] = static_cast<uint8_t>(s[i]);
+  }
+}
+
+static void testMtoTrigger() {
+  uint8_t dig[32];
+  sha256_short(reinterpret_cast<const uint8_t*>(""), 0, dig);
+  expect(dig[0] == 0xe3 && dig[1] == 0xb0 && dig[31] == 0x55, "sha256 vide");
+  uint8_t zeros[16] = {0};
+  sha256_short(zeros, 16, dig);
+  expectEq(dig[0], 0x37, "hash secret vide");
+  expectEq(kPublicChannelHash, dig[0], "constante 0x37");
+  const char* name = "#germacrisepublic";
+  sha256_short(reinterpret_cast<const uint8_t*>(name), strlen(name), dig);
+  expect(dig[0] != kPublicChannelHash, "le nom n'est pas le hash");
+  const char* region = "#fr-42";
+  sha256_short(reinterpret_cast<const uint8_t*>(region), strlen(region), dig);
+  expect(dig[0] == 0xe7 && dig[1] == 0x89 && dig[2] == 0x8e && dig[3] == 0x6d, "clé fr-42");
+
+  uint8_t pkt[40];
+  memset(pkt, 0, sizeof(pkt));
+  pkt[0] = 1;
+  pkt[4] = 0;
+  memcpy(pkt + 5, "Pager: mto_now", 14);
+  expect(grpTxtRequestsCommand(pkt, 32, kMtoNow), "grp 1.18 paddé");
+  pkt[4] = 1;
+  expect(grpTxtRequestsCommand(pkt, 19, kMtoNow), "grp essai 1");
+  pkt[4] = static_cast<uint8_t>(3 << 2);
+  memcpy(pkt + 5, "mto_now", 7);
+  expect(grpTxtRequestsCommand(pkt, 12, kMtoNow), "grp cli");
+  memset(pkt, 0, sizeof(pkt));
+  memcpy(pkt + 4, "Radio: mto_now", 14);
+  expect(grpTxtRequestsCommand(pkt, 18, kMtoNow), "grp sans type");
+  memset(pkt, 0, sizeof(pkt));
+  memcpy(pkt + 4, "mto_now", 7);
+  expect(grpTxtRequestsCommand(pkt, 11, kMtoNow), "commande collée au timestamp");
+  memset(pkt, 0, sizeof(pkt));
+  pkt[4] = 0;
+  memcpy(pkt + 5, "bonjour", 7);
+  expect(!grpTxtRequestsCommand(pkt, 12, kMtoNow), "autre texte");
+  memcpy(pkt + 5, "mto_nowhere", 11);
+  expect(!grpTxtRequestsCommand(pkt, 16, kMtoNow), "mot plus long");
+  expect(!grpTxtRequestsCommand(pkt, 4, kMtoNow), "trop court");
+  expect(containsCommand("MTO_NOW", kMtoNow), "casse libre");
+
+  DutyPlan both = planDutyTx(5000, 1000, 2000, true);
+  expect(both.send_data && both.send_text, "budget pour les deux");
+  DutyPlan data_only = planDutyTx(2500, 1000, 2000, true);
+  expect(data_only.send_data && !data_only.send_text, "le texte ne bloque pas la data");
+  DutyPlan none = planDutyTx(500, 1000, 100, true);
+  expect(!none.send_data && !none.send_text, "budget trop juste");
+  DutyPlan no_text = planDutyTx(1000, 1000, 50, false);
+  expect(no_text.send_data && !no_text.send_text, "sans demande de texte");
+}
+
 static void testChannel() {
   expect(strcmp(kProjectName, "Meshcore_Station_Meteo") == 0, "nom du projet");
   expect(strcmp(kFirmwareVersion, "Meshcore_Station_Meteo-0.0.1") == 0, "version d'image");
@@ -248,6 +371,7 @@ int main() {
   testCadence();
   testLpp();
   testBands();
+  testMtoTrigger();
   testChannel();
   if (failures) {
     fprintf(stderr, "%d échec(s)\n", failures);

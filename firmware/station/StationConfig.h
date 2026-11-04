@@ -32,8 +32,11 @@ static constexpr uint8_t kLppGps = 136;
 static constexpr uint16_t kStmetDataType = 0xFF42;
 
 // Nom exact, figé. Minuscules, sans underscore, sans autre casse.
-// Canal public : secret MeshCore de 16 octets à zéro (hash d'air 0x37).
+// Canal public : secret MeshCore de 16 octets à zéro. Le nom n'entre pas
+// dans le hash : SHA-256 de ces 16 zéros commence par 0x37, comme tout
+// canal sans clé. MeshCore n'émet que ce premier octet.
 static constexpr char kChannelName[] = "#germacrisepublic";
+static constexpr uint8_t kPublicChannelHash = 0x37;
 
 // Région du nœud et portée du flood météo / mto_now. Plus fr-ara pour ce flux.
 static constexpr char kRegionNode[] = "fr-42";

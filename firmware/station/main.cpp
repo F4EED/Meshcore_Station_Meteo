@@ -16,15 +16,19 @@
 #include <time.h>
 
 // Capteur MeshCore (type 4). Les extras LPP (rosée, ressenti, indices) sont
-// ajoutés à la télémétrie (requête, push et GRP_DATA). mto_now sur
-// #germacrisepublic déclenche un flood fr-42 : GRP_TXT de mesure + GRP_DATA
-// 0xFF42, secret vide. Pas de sommeil : le nœud reste en écoute.
+// ajoutés à la télémétrie (requête, push et GRP_DATA). mto_now — GRP_TXT du
+// canal (avec ou sans octet de type), message direct ou CLI — déclenche un
+// flood fr-42. Le GRP_DATA 0xFF42 part dès qu'il y a au moins T ou P, même si
+// le texte ne tient pas dans le duty cycle. Secret de canal : 16 zéros, hash
+// d'air 0x37. Le nom #germacrisepublic n'entre pas dans ce hash. Pas de sommeil.
 
 static const char kBandsPath[] = "/stmet.bands";
 static const char kSeedPath[] = "/stmet.seed";
 static const char kGpsPath[] = "/stmet.gps";
 static const char kFranceTz[] = "CET-1CEST,M3.5.0,M10.5.0/3";
 static const unsigned long kIaqGapMs = (kSamplePeriodS - 5) * 1000UL;
+static const unsigned long kMtoQuietMs = 4000UL;
+static const unsigned long kCaptureGapMs = 2000UL;
 
 static FILESYSTEM* station_fs = nullptr;
 
@@ -96,7 +100,9 @@ class MyMesh : public SensorMesh {
     loadBands();
     prepareChannel();
     Serial.print("canal ");
-    Serial.println(kChannelName);
+    Serial.print(kChannelName);
+    Serial.print(" hash ");
+    Serial.println(channel_.hash[0], HEX);
     if (!fileExists(kSeedPath)) {
       seedRadio();
     }
@@ -187,7 +193,10 @@ class MyMesh : public SensorMesh {
   }
 
   int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override {
-    if (!channel_ready_ || hash == nullptr || max_matches < 1) {
+    // L'appelant ne fournit qu'un octet (PATH_HASH_SIZE). On ne lit pas plus loin.
+    // Indépendant de la région : un GRP_TXT chiffré avec le secret vide doit
+    // se déchiffrer même si le flood n'est pas fr-42.
+    if (!hash_ready_ || hash == nullptr || max_matches < 1) {
       return 0;
     }
     if (hash[0] != channel_.hash[0]) {
@@ -201,25 +210,21 @@ class MyMesh : public SensorMesh {
                        size_t len) override {
     (void)packet;
     (void)channel;
-    if (type != PAYLOAD_TYPE_GRP_TXT || data == nullptr || len < 6) {
+    if (type != PAYLOAD_TYPE_GRP_TXT || !grpTxtRequestsCommand(data, len, kMtoNow)) {
       return;
     }
-    uint8_t txt_type = data[4];
-    if ((txt_type >> 2) != 0) {
-      return;
+    armMtoNow();
+  }
+
+  void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data,
+                      size_t len) override {
+    if (type == PAYLOAD_TYPE_TXT_MSG && data != nullptr && len > 5) {
+      uint8_t txt_type = static_cast<uint8_t>(data[4] >> 2);
+      if (txt_type <= TXT_TYPE_CLI_COMMAND && bytesContainCommand(data + 5, len - 5, kMtoNow)) {
+        armMtoNow();
+      }
     }
-    char text[120];
-    size_t n = len - 5;
-    if (n >= sizeof(text)) {
-      n = sizeof(text) - 1;
-    }
-    memcpy(text, data + 5, n);
-    text[n] = 0;
-    if (!containsCommand(text, kMtoNow)) {
-      return;
-    }
-    reply_now_ = true;
-    Serial.println("mto_now");
+    SensorMesh::onPeerDataRecv(packet, type, sender_idx, secret, data, len);
   }
 
   bool handleCustomCommand(uint32_t sender_timestamp, char* command, char* reply) override {
@@ -259,6 +264,11 @@ class MyMesh : public SensorMesh {
       strcpy(reply, "OK");
       return true;
     }
+    if (containsCommand(command, kMtoNow)) {
+      armMtoNow();
+      strcpy(reply, have_latest_ ? "OK" : "pas de mesure");
+      return true;
+    }
     return false;
   }
 
@@ -278,6 +288,9 @@ class MyMesh : public SensorMesh {
   bool sample_pending_ = false;
   bool force_tx_ = false;
   bool reply_now_ = false;
+  bool hash_ready_ = false;
+  unsigned long last_capture_ms_ = 0;
+  unsigned long last_mto_sent_ms_ = 0;
   bool have_iaq_ = false;
   bool chase_active_ = false;
   bool gps_settled_ = false;
@@ -339,14 +352,52 @@ class MyMesh : public SensorMesh {
   }
 
   void prepareChannel() {
-    // Canal public, sans clé. MeshCore hash un secret 128 bits : ici, 16 zéros.
+    // Canal public, sans clé. Le hash d'air est le premier octet de
+    // SHA-256(16 zéros) = 0x37. On calcule dans un tampon de 32 octets :
+    // hash[] n'en fait qu'un, et secret[] est juste après en mémoire.
+    uint8_t digest[32];
     memset(channel_.secret, 0, sizeof(channel_.secret));
-    mesh::Utils::sha256(channel_.hash, sizeof(channel_.hash), channel_.secret, 16);
+    memset(digest, 0, sizeof(digest));
+    mesh::Utils::sha256(digest, sizeof(digest), channel_.secret, 16);
+    memset(channel_.hash, 0, sizeof(channel_.hash));
+    channel_.hash[0] = digest[0];
+    hash_ready_ = true;
+    if (digest[0] != kPublicChannelHash) {
+      Serial.println("hash canal inattendu");
+    }
     char tagged[24];
     snprintf(tagged, sizeof(tagged), "#%s", kRegionFlood);
     mesh::Utils::sha256(region_key_.key, sizeof(region_key_.key), reinterpret_cast<const uint8_t*>(tagged),
                         static_cast<int>(strlen(tagged)));
-    channel_ready_ = !region_key_.isNull();
+    channel_ready_ = hash_ready_ && !region_key_.isNull();
+  }
+
+  void captureSample() {
+    unsigned long now_ms = millis();
+    if (last_capture_ms_ != 0 && now_ms - last_capture_ms_ < kCaptureGapMs) {
+      return;
+    }
+    last_capture_ms_ = now_ms;
+    CayenneLPP local(MAX_PACKET_PAYLOAD - 4);
+    float volts = static_cast<float>(board.getBattMilliVolts()) / 1000.0f;
+    local.addVoltage(kLppChNode, volts);
+    sensors.querySensors(0xFF, local);
+    onTelemetryBuilt(local);
+  }
+
+  void armMtoNow() {
+    unsigned long now_ms = millis();
+    if (!reply_now_ && last_mto_sent_ms_ != 0 && now_ms - last_mto_sent_ms_ < kMtoQuietMs) {
+      return;
+    }
+    bool first = !reply_now_;
+    reply_now_ = true;
+    if (!have_latest_) {
+      captureSample();
+    }
+    if (first) {
+      Serial.println(have_latest_ ? "mto_now" : "mto_now sans mesure");
+    }
   }
 
   void loadBands() {
@@ -617,6 +668,9 @@ class MyMesh : public SensorMesh {
   }
 
   void maybePublish() {
+    if (reply_now_ && !have_latest_) {
+      captureSample();
+    }
     if (!have_latest_ || !channel_ready_) {
       return;
     }
@@ -647,16 +701,21 @@ class MyMesh : public SensorMesh {
       return;
     }
     mesh::Packet* text_pkt = now_reply ? buildGroupText(now) : nullptr;
-    uint32_t need = airMs(data_pkt);
-    if (text_pkt != nullptr) {
-      need += airMs(text_pkt);
-    }
-    if (getRemainingTxBudget() < need) {
+    uint32_t budget = static_cast<uint32_t>(getRemainingTxBudget());
+    uint32_t data_air = airMs(data_pkt);
+    uint32_t text_air = text_pkt != nullptr ? airMs(text_pkt) : 0;
+    DutyPlan plan = planDutyTx(budget, data_air, text_air, text_pkt != nullptr);
+    if (!plan.send_data) {
       releasePacket(data_pkt);
       if (text_pkt != nullptr) {
         releasePacket(text_pkt);
       }
       return;
+    }
+    if (text_pkt != nullptr && !plan.send_text) {
+      releasePacket(text_pkt);
+      text_pkt = nullptr;
+      Serial.println("texte reporté, duty cycle");
     }
     floodNow(data_pkt);
     if (text_pkt != nullptr) {
@@ -669,6 +728,9 @@ class MyMesh : public SensorMesh {
     last_tx_unix_ = now;
     sample_pending_ = false;
     force_tx_ = false;
+    if (now_reply) {
+      last_mto_sent_ms_ = millis();
+    }
     reply_now_ = false;
     const char* mode = "normal";
     if (now_reply) {

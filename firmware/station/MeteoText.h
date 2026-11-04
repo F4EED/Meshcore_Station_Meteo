@@ -13,13 +13,26 @@ inline bool isCmdChar(char c) {
   return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';
 }
 
+inline char foldCmd(char c) {
+  if (c >= 'A' && c <= 'Z') {
+    return static_cast<char>(c - 'A' + 'a');
+  }
+  return c;
+}
+
 inline bool containsCommand(const char* text, const char* cmd) {
   if (text == nullptr || cmd == nullptr || cmd[0] == 0) {
     return false;
   }
   size_t n = strlen(cmd);
   for (const char* p = text; *p != 0; ++p) {
-    if (strncmp(p, cmd, n) != 0) {
+    size_t i = 0;
+    for (; i < n; ++i) {
+      if (p[i] == 0 || foldCmd(p[i]) != foldCmd(cmd[i])) {
+        break;
+      }
+    }
+    if (i != n) {
       continue;
     }
     bool left = p == text || !isCmdChar(p[-1]);
@@ -29,6 +42,60 @@ inline bool containsCommand(const char* text, const char* cmd) {
     }
   }
   return false;
+}
+
+// Copie bornée : le déchiffrement MeshCore padde par des zéros, sans garder
+// la longueur utile d'origine.
+inline bool bytesContainCommand(const uint8_t* data, size_t len, const char* cmd) {
+  if (data == nullptr || len == 0) {
+    return false;
+  }
+  char text[160];
+  size_t n = len < sizeof(text) - 1 ? len : sizeof(text) - 1;
+  size_t m = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (data[i] == 0) {
+      break;
+    }
+    text[m++] = static_cast<char>(data[i]);
+  }
+  text[m] = 0;
+  return containsCommand(text, cmd);
+}
+
+// GRP_TXT clair. MeshCore 1.18 : timestamp uint32, octet de type, puis
+// « nom: message ». Packet.h décrit aussi timestamp puis le texte, sans
+// octet de type. Les deux sont acceptés. Le type (clair, essai, CLI) ne
+// fait pas rejeter la commande.
+inline bool grpTxtRequestsCommand(const uint8_t* data, size_t len, const char* cmd) {
+  if (data == nullptr || len < 5) {
+    return false;
+  }
+  if (len >= 6 && bytesContainCommand(data + 5, len - 5, cmd)) {
+    return true;
+  }
+  return bytesContainCommand(data + 4, len - 4, cmd);
+}
+
+// Le texte ne doit pas empêcher le GRP_DATA. S'il ne reste de budget que
+// pour une trame, seule la data part.
+struct DutyPlan {
+  bool send_data;
+  bool send_text;
+};
+
+inline DutyPlan planDutyTx(uint32_t budget_ms, uint32_t data_ms, uint32_t text_ms, bool want_text) {
+  DutyPlan plan;
+  plan.send_data = false;
+  plan.send_text = false;
+  if (budget_ms < data_ms) {
+    return plan;
+  }
+  plan.send_data = true;
+  if (want_text && text_ms <= budget_ms - data_ms) {
+    plan.send_text = true;
+  }
+  return plan;
 }
 
 inline int appendSep(char* dest, int cap, int used) {
