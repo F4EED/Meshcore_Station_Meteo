@@ -98,6 +98,42 @@ inline DutyPlan planDutyTx(uint32_t budget_ms, uint32_t data_ms, uint32_t text_m
   return plan;
 }
 
+// Portée entendue sur un flood. Fr42 = étiquette fr-42. Fr = parent fr.
+// Open = pas de code de transport. Other = une autre étiquette (fr-ara, …).
+// Un paquet qui n'est pas un flood (direct, CLI) reste Fr42.
+enum class HearScope : uint8_t { Fr42 = 0, Fr = 1, Open = 2, Other = 3 };
+
+inline HearScope hearScopeOf(bool is_flood, bool has_transport, uint16_t code, uint16_t code_fr42, uint16_t code_fr) {
+  if (!is_flood) {
+    return HearScope::Fr42;
+  }
+  if (!has_transport || code == 0) {
+    return HearScope::Open;
+  }
+  if (code == code_fr42) {
+    return HearScope::Fr42;
+  }
+  if (code == code_fr) {
+    return HearScope::Fr;
+  }
+  return HearScope::Other;
+}
+
+// mto_now : le texte part même sans mesure. La data part dès qu'il y a un
+// échantillon. Le budget local ne retient pas cette réponse.
+inline DutyPlan planReplyTx(bool have_sample) {
+  DutyPlan plan;
+  plan.send_data = have_sample;
+  plan.send_text = true;
+  return plan;
+}
+
+inline bool replyAlsoOnParent(HearScope scope) {
+  return scope == HearScope::Fr || scope == HearScope::Other;
+}
+
+inline bool replyAlsoOpen(HearScope scope) { return scope == HearScope::Open; }
+
 inline int appendSep(char* dest, int cap, int used) {
   if (used < 0 || used >= cap - 1) {
     return -1;

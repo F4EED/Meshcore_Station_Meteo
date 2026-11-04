@@ -340,6 +340,21 @@ static void testMtoTrigger() {
   expect(!none.send_data && !none.send_text, "budget trop juste");
   DutyPlan no_text = planDutyTx(1000, 1000, 50, false);
   expect(no_text.send_data && !no_text.send_text, "sans demande de texte");
+
+  DutyPlan reply_empty = planReplyTx(false);
+  expect(!reply_empty.send_data && reply_empty.send_text, "mto sans mesure envoie le texte");
+  DutyPlan reply_full = planReplyTx(true);
+  expect(reply_full.send_data && reply_full.send_text, "mto avec mesure envoie les deux");
+
+  expect(hearScopeOf(false, true, 0x1111, 0x2222, 0x3333) == HearScope::Fr42, "direct reste fr-42");
+  expect(hearScopeOf(true, false, 0, 0x2222, 0x3333) == HearScope::Open, "flood sans transport");
+  expect(hearScopeOf(true, true, 0, 0x2222, 0x3333) == HearScope::Open, "code zero");
+  expect(hearScopeOf(true, true, 0x2222, 0x2222, 0x3333) == HearScope::Fr42, "code fr-42");
+  expect(hearScopeOf(true, true, 0x3333, 0x2222, 0x3333) == HearScope::Fr, "code fr");
+  expect(hearScopeOf(true, true, 0x4444, 0x2222, 0x3333) == HearScope::Other, "autre region");
+  expect(replyAlsoOnParent(HearScope::Fr) && replyAlsoOnParent(HearScope::Other), "renvoi aussi sur fr");
+  expect(!replyAlsoOnParent(HearScope::Fr42) && !replyAlsoOpen(HearScope::Fr42), "fr-42 seul si deja fr-42");
+  expect(replyAlsoOpen(HearScope::Open), "renvoi aussi sans code");
 }
 
 static void testChannel() {

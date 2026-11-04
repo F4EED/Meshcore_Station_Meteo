@@ -35,6 +35,7 @@ rm -rf "$MESH/examples/station_meteo"
 mkdir -p "$MESH/examples/station_meteo" "$MESH/variants/wio-tracker-l1-meteo"
 cp "$ROOT"/firmware/station/* "$MESH/examples/station_meteo/"
 cp "$ROOT/firmware/variant/platformio.ini" "$MESH/variants/wio-tracker-l1-meteo/platformio.ini"
+cp "$ROOT/firmware/variant/fix_wire_timeout.py" "$MESH/fix_wire_timeout.py"
 
 ( cd "$MESH" && "${PIO[@]}" run -e WioTrackerL1_meteo )
 

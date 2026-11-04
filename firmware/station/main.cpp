@@ -18,9 +18,15 @@
 // Capteur MeshCore (type 4). Les extras LPP (rosée, ressenti, indices) sont
 // ajoutés à la télémétrie (requête, push et GRP_DATA). mto_now — GRP_TXT du
 // canal (avec ou sans octet de type), message direct ou CLI — déclenche un
-// flood fr-42. Le GRP_DATA 0xFF42 part dès qu'il y a au moins T ou P, même si
-// le texte ne tient pas dans le duty cycle. Secret de canal : 16 zéros, hash
-// d'air 0x37. Le nom #germacrisepublic n'entre pas dans ce hash. Pas de sommeil.
+// flood. La copie canonique est fr-42. Une demande entendue en fr, sans
+// région, ou sous une autre étiquette, est aussi renvoyée sur cette portée
+// pour qu'un répéteur qui n'a que fr puisse la porter. Le GRP_DATA 0xFF42
+// part dès qu'il y a au moins T ou P. Sans mesure, un GRP_TXT « pas de mesure »
+// part quand même. Secret de canal : 32 octets à zéro (MAC sur 32, AES sur
+// 16), hash d'air 0x37. Le nom #germacrisepublic n'entre pas dans ce hash.
+// À chaque boot, la radio est recollée sur EU868 Narrow (le fichier de
+// réglages survit au UF2). CAD coupé. Pas de sommeil. L'I2C capteur ne
+// s'exécute pas dans le callback radio.
 
 static const char kBandsPath[] = "/stmet.bands";
 static const char kSeedPath[] = "/stmet.seed";
@@ -94,26 +100,34 @@ class MyMesh : public SensorMesh {
     memset(channel_.secret, 0, sizeof(channel_.secret));
     memset(channel_.hash, 0, sizeof(channel_.hash));
     memset(region_key_.key, 0, sizeof(region_key_.key));
+    memset(parent_key_.key, 0, sizeof(parent_key_.key));
   }
 
   void bringUp() {
     loadBands();
     prepareChannel();
-    Serial.print("canal ");
-    Serial.print(kChannelName);
-    Serial.print(" hash ");
-    Serial.println(channel_.hash[0], HEX);
+    lockRadio();
+    ensureRegions();
     if (!fileExists(kSeedPath)) {
       seedRadio();
     }
     loadGpsMarker();
-    armGpsChase();
+    Serial.print("canal ");
+    Serial.print(kChannelName);
+    Serial.print(" hash ");
+    Serial.println(channel_.hash[0], HEX);
+    Serial.println("RX armee");
+    Serial.flush();
   }
+
+  // Après sensors.begin(), pour que le GPS soit déjà détecté.
+  void startGpsChase() { armGpsChase(); }
 
   void loop() {
     chaseGps();
     SensorMesh::loop();
     maybePublish();
+    beat();
   }
 
  protected:
@@ -192,6 +206,33 @@ class MyMesh : public SensorMesh {
     return n;
   }
 
+  // fr, fr-42, ou flood sans code de transport : on ne jette rien ici.
+  // Le filtre répéteur (région inconnue) n'est pas celui d'un capteur.
+  bool filterRecvFloodPacket(mesh::Packet* packet) override {
+    (void)packet;
+    return false;
+  }
+
+  mesh::DispatcherAction onRecvPacket(mesh::Packet* pkt) override {
+    if (pkt != nullptr && pkt->isRouteFlood()) {
+      rx_floods_++;
+      uint8_t type = pkt->getPayloadType();
+      if (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_GRP_DATA) {
+        Serial.print("RX ");
+        Serial.print(type == PAYLOAD_TYPE_GRP_TXT ? "txt" : "data");
+        if (pkt->payload_len > 0) {
+          Serial.print(" h");
+          Serial.print(pkt->payload[0], HEX);
+        }
+        if (!pkt->hasTransportCodes() || pkt->transport_codes[0] == 0) {
+          Serial.print(" ouvert");
+        }
+        Serial.println();
+      }
+    }
+    return SensorMesh::onRecvPacket(pkt);
+  }
+
   int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override {
     // L'appelant ne fournit qu'un octet (PATH_HASH_SIZE). On ne lit pas plus loin.
     // Indépendant de la région : un GRP_TXT chiffré avec le secret vide doit
@@ -208,12 +249,11 @@ class MyMesh : public SensorMesh {
 
   void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data,
                        size_t len) override {
-    (void)packet;
     (void)channel;
     if (type != PAYLOAD_TYPE_GRP_TXT || !grpTxtRequestsCommand(data, len, kMtoNow)) {
       return;
     }
-    armMtoNow();
+    armMtoNow(scopeOf(packet));
   }
 
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data,
@@ -221,7 +261,7 @@ class MyMesh : public SensorMesh {
     if (type == PAYLOAD_TYPE_TXT_MSG && data != nullptr && len > 5) {
       uint8_t txt_type = static_cast<uint8_t>(data[4] >> 2);
       if (txt_type <= TXT_TYPE_CLI_COMMAND && bytesContainCommand(data + 5, len - 5, kMtoNow)) {
-        armMtoNow();
+        armMtoNow(scopeOf(packet));
       }
     }
     SensorMesh::onPeerDataRecv(packet, type, sender_idx, secret, data, len);
@@ -265,8 +305,11 @@ class MyMesh : public SensorMesh {
       return true;
     }
     if (containsCommand(command, kMtoNow)) {
-      armMtoNow();
-      strcpy(reply, have_latest_ ? "OK" : "pas de mesure");
+      armMtoNow(HearScope::Fr42);
+      if (!have_latest_) {
+        captureSample();
+      }
+      strcpy(reply, "OK");
       return true;
     }
     return false;
@@ -281,6 +324,10 @@ class MyMesh : public SensorMesh {
   WeatherSample prev_;
   mesh::GroupChannel channel_;
   TransportKey region_key_;
+  TransportKey parent_key_;
+  HearScope hear_ = HearScope::Fr42;
+  uint32_t rx_floods_ = 0;
+  unsigned long last_beat_ms_ = 0;
   bool channel_ready_ = false;
   bool have_latest_ = false;
   bool have_prev_ = false;
@@ -369,7 +416,55 @@ class MyMesh : public SensorMesh {
     snprintf(tagged, sizeof(tagged), "#%s", kRegionFlood);
     mesh::Utils::sha256(region_key_.key, sizeof(region_key_.key), reinterpret_cast<const uint8_t*>(tagged),
                         static_cast<int>(strlen(tagged)));
-    channel_ready_ = hash_ready_ && !region_key_.isNull();
+    snprintf(tagged, sizeof(tagged), "#%s", kRegionParent);
+    mesh::Utils::sha256(parent_key_.key, sizeof(parent_key_.key), reinterpret_cast<const uint8_t*>(tagged),
+                        static_cast<int>(strlen(tagged)));
+    channel_ready_ = hash_ready_ && !region_key_.isNull() && !parent_key_.isNull();
+  }
+
+  // Le UF2 n'efface pas InternalFS. Un ancien compagnon ou une image
+  // précédente peut y avoir laissé CR 5, une autre fréquence, ou le CAD.
+  void lockRadio() {
+    NodePrefs* prefs = getNodePrefs();
+    prefs->freq = LORA_FREQ;
+    prefs->bw = LORA_BW;
+    prefs->sf = LORA_SF;
+    prefs->cr = LORA_CR;
+    prefs->tx_power_dbm = LORA_TX_POWER;
+    prefs->cad_enabled = 0;
+    prefs->interference_threshold = 0;
+    prefs->disable_fwd = 1;
+    prefs->path_hash_mode = 1;
+    prefs->rx_boosted_gain = 1;
+    radio_driver.setParams(prefs->freq, prefs->bw, prefs->sf, prefs->cr);
+    radio_driver.setTxPower(prefs->tx_power_dbm);
+    radio_driver.setRxBoostedGainMode(true);
+    radio_driver.setCADEnabled(false);
+    savePrefs();
+    Serial.print("radio ");
+    Serial.print(prefs->freq, 3);
+    Serial.print(" bw ");
+    Serial.print(prefs->bw, 1);
+    Serial.print(" sf ");
+    Serial.print(prefs->sf);
+    Serial.print(" cr ");
+    Serial.println(prefs->cr);
+  }
+
+  void ensureRegions() {
+    static const char* kCmds[] = {
+        "region def eu europe fr",
+        "region put fr-42 fr",
+        "region allowf fr",
+        "region allowf fr-42",
+        "region allowf *",
+        "region home fr-42",
+        "region default fr-42",
+        "region save",
+    };
+    for (size_t i = 0; i < sizeof(kCmds) / sizeof(kCmds[0]); ++i) {
+      runCli(kCmds[i]);
+    }
   }
 
   void captureSample() {
@@ -385,18 +480,29 @@ class MyMesh : public SensorMesh {
     onTelemetryBuilt(local);
   }
 
-  void armMtoNow() {
+  HearScope scopeOf(const mesh::Packet* packet) const {
+    if (packet == nullptr || !hash_ready_) {
+      return HearScope::Fr42;
+    }
+    bool has = packet->hasTransportCodes();
+    uint16_t code = has ? packet->transport_codes[0] : 0;
+    uint16_t code_fr42 = has ? region_key_.calcTransportCode(packet) : 0;
+    uint16_t code_fr = has ? parent_key_.calcTransportCode(packet) : 0;
+    return hearScopeOf(packet->isRouteFlood(), has, code, code_fr42, code_fr);
+  }
+
+  // Pas de lecture I2C ici : le callback est dans la boucle radio.
+  void armMtoNow(HearScope scope) {
     unsigned long now_ms = millis();
     if (!reply_now_ && last_mto_sent_ms_ != 0 && now_ms - last_mto_sent_ms_ < kMtoQuietMs) {
       return;
     }
     bool first = !reply_now_;
     reply_now_ = true;
-    if (!have_latest_) {
-      captureSample();
-    }
+    hear_ = scope;
     if (first) {
-      Serial.println(have_latest_ ? "mto_now" : "mto_now sans mesure");
+      Serial.print("mto_now scope ");
+      Serial.println(static_cast<int>(scope));
     }
   }
 
@@ -542,7 +648,7 @@ class MyMesh : public SensorMesh {
         "set path.hash.mode 1",
         "set advert.interval 240",
         "set flood.advert.interval 12",
-        "set cad on",
+        "set cad off",
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof(kCmds) / sizeof(kCmds[0]); ++i) {
@@ -644,9 +750,12 @@ class MyMesh : public SensorMesh {
 
   mesh::Packet* buildGroupText(uint32_t now) {
     char body[96];
-    int body_len = formatMeteoLine(latest_, body, static_cast<int>(sizeof(body)));
+    int body_len = have_latest_ ? formatMeteoLine(latest_, body, static_cast<int>(sizeof(body))) : -1;
     if (body_len <= 0) {
-      return nullptr;
+      body_len = snprintf(body, sizeof(body), "pas de mesure");
+      if (body_len <= 0) {
+        return nullptr;
+      }
     }
     char prefixed[128];
     int prefix = snprintf(prefixed, sizeof(prefixed), "%s: ", kNodeName);
@@ -662,70 +771,140 @@ class MyMesh : public SensorMesh {
     return createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel_, plain, static_cast<size_t>(5 + text_len));
   }
 
-  void floodNow(mesh::Packet* packet) {
+  void dispatchFlood(const TransportKey* scope, mesh::Packet* packet) {
     uint8_t hash_size = static_cast<uint8_t>(getNodePrefs()->path_hash_mode + 1);
-    sendFloodScoped(region_key_, packet, 0, hash_size);
+    if (scope == nullptr || scope->isNull()) {
+      sendFlood(packet, 0, hash_size);
+    } else {
+      sendFloodScoped(*scope, packet, 0, hash_size);
+    }
   }
 
-  void maybePublish() {
-    if (reply_now_ && !have_latest_) {
-      captureSample();
-    }
-    if (!have_latest_ || !channel_ready_) {
-      return;
-    }
-    bool now_reply = reply_now_;
-    if (!sample_pending_ && !force_tx_ && !now_reply) {
-      return;
-    }
-    uint32_t now = getRTCClock()->getCurrentTime();
-    Cadence cadence = evaluateCadence(latest_, have_prev_, prev_, bands_, ever_sent_ ? last_tx_unix_ : now);
-    if (!force_tx_ && !now_reply && !txDue(ever_sent_, now, last_tx_unix_, cadence.interval_s)) {
-      sample_pending_ = false;
-      return;
-    }
-
+  mesh::Packet* makeDataPacket() {
     uint8_t lpp[128];
     LppWriter writer(lpp, static_cast<int>(sizeof(lpp)));
     if (!appendCurated(&writer) || writer.size() > MAX_GROUP_DATA_LENGTH) {
-      return;
+      return nullptr;
     }
     uint8_t plain[3 + sizeof(lpp)];
     plain[0] = static_cast<uint8_t>(kStmetDataType & 0xff);
     plain[1] = static_cast<uint8_t>(kStmetDataType >> 8);
     plain[2] = static_cast<uint8_t>(writer.size());
     memcpy(plain + 3, writer.data(), writer.size());
+    return createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel_, plain, 3 + writer.size());
+  }
 
-    mesh::Packet* data_pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel_, plain, 3 + writer.size());
-    if (data_pkt == nullptr) {
-      return;
-    }
-    mesh::Packet* text_pkt = now_reply ? buildGroupText(now) : nullptr;
-    uint32_t budget = static_cast<uint32_t>(getRemainingTxBudget());
-    uint32_t data_air = airMs(data_pkt);
-    uint32_t text_air = text_pkt != nullptr ? airMs(text_pkt) : 0;
-    DutyPlan plan = planDutyTx(budget, data_air, text_air, text_pkt != nullptr);
-    if (!plan.send_data) {
-      releasePacket(data_pkt);
-      if (text_pkt != nullptr) {
-        releasePacket(text_pkt);
+  // nullptr = flood sans code de transport.
+  int queueScope(const TransportKey* scope, bool with_text, bool with_data, uint32_t now, int* bytes_out) {
+    int sent = 0;
+    if (with_data) {
+      mesh::Packet* data_pkt = makeDataPacket();
+      if (data_pkt != nullptr) {
+        if (bytes_out != nullptr) {
+          *bytes_out = data_pkt->payload_len;
+        }
+        dispatchFlood(scope, data_pkt);
+        sent++;
       }
+    }
+    if (with_text) {
+      mesh::Packet* text_pkt = buildGroupText(now);
+      if (text_pkt != nullptr) {
+        if (bytes_out != nullptr && *bytes_out == 0) {
+          *bytes_out = text_pkt->payload_len;
+        }
+        dispatchFlood(scope, text_pkt);
+        sent++;
+      }
+    }
+    return sent;
+  }
+
+  void beat() {
+    unsigned long now_ms = millis();
+    if (last_beat_ms_ != 0 && now_ms - last_beat_ms_ < 10000UL) {
       return;
     }
-    if (text_pkt != nullptr && !plan.send_text) {
-      releasePacket(text_pkt);
-      text_pkt = nullptr;
-      Serial.println("texte reporté, duty cycle");
+    last_beat_ms_ = now_ms;
+    NodePrefs* prefs = getNodePrefs();
+    Serial.print("ecoute ");
+    Serial.print(kChannelName);
+    Serial.print(" h");
+    Serial.print(channel_.hash[0], HEX);
+    Serial.print(' ');
+    Serial.print(kRegionFlood);
+    Serial.print(" rx=");
+    Serial.print(rx_floods_);
+    Serial.print(" cr=");
+    Serial.print(prefs->cr);
+    Serial.print(" cad=");
+    Serial.println(prefs->cad_enabled ? "on" : "off");
+  }
+
+  void maybePublish() {
+    if (reply_now_ && !have_latest_) {
+      captureSample();
     }
-    floodNow(data_pkt);
-    if (text_pkt != nullptr) {
-      floodNow(text_pkt);
+    if (!channel_ready_) {
+      return;
+    }
+    bool now_reply = reply_now_;
+    if (!now_reply && !have_latest_) {
+      return;
+    }
+    if (!sample_pending_ && !force_tx_ && !now_reply) {
+      return;
+    }
+    uint32_t now = getRTCClock()->getCurrentTime();
+    Cadence cadence;
+    cadence.mode = TxMode::Normal;
+    cadence.interval_s = kNoClockIntervalS;
+    if (have_latest_) {
+      cadence = evaluateCadence(latest_, have_prev_, prev_, bands_, ever_sent_ ? last_tx_unix_ : now);
+    }
+    if (!force_tx_ && !now_reply && !txDue(ever_sent_, now, last_tx_unix_, cadence.interval_s)) {
+      sample_pending_ = false;
+      return;
     }
 
-    prev_ = latest_;
-    have_prev_ = true;
-    ever_sent_ = true;
-    last_tx_unix_ = now;
+    bool with_data = true;
+    bool with_text = false;
+    if (now_reply) {
+      DutyPlan plan = planReplyTx(have_latest_);
+      with_data = plan.send_data;
+      with_text = plan.send_text;
+    } else {
+      mesh::Packet* probe = makeDataPacket();
+      if (probe == nullptr) {
+        return;
+      }
+      uint32_t budget = static_cast<uint32_t>(getRemainingTxBudget());
+      uint32_t data_air = airMs(probe);
+      releasePacket(probe);
+      DutyPlan plan = planDutyTx(budget, data_air, data_air, false);
+      if (!plan.send_data) {
+        return;
+      }
+    }
+
+    int bytes = 0;
+    int n = queueScope(&region_key_, with_text, with_data, now, &bytes);
+    if (now_reply && replyAlsoOnParent(hear_)) {
+      n += queueScope(&parent_key_, with_text, with_data, now, nullptr);
+    }
+    if (now_reply && replyAlsoOpen(hear_)) {
+      n += queueScope(nullptr, with_text, with_data, now, nullptr);
+    }
+    if (n == 0) {
+      return;
+    }
+
+    if (have_latest_) {
+      prev_ = latest_;
+      have_prev_ = true;
+      ever_sent_ = true;
+      last_tx_unix_ = now;
+    }
     sample_pending_ = false;
     force_tx_ = false;
     if (now_reply) {
@@ -743,8 +922,9 @@ class MyMesh : public SensorMesh {
     Serial.print("TX ");
     Serial.print(mode);
     Serial.print(' ');
-    Serial.print(writer.size());
-    Serial.println(" o");
+    Serial.print(bytes);
+    Serial.print(" o x");
+    Serial.println(n);
   }
 };
 
@@ -752,25 +932,12 @@ StdRNG fast_rng;
 SimpleMeshTables tables;
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 
-void halt() {
-  while (1) {
-  }
-}
-
 static char command[160];
+static bool radio_ok = false;
+static bool mesh_up = false;
+static bool sensors_booted = false;
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println(kProjectName);
-  setFranceTz();
-
-  board.begin();
-
-  if (!radio_init()) {
-    halt();
-  }
-
+static void bootMesh() {
   fast_rng.begin(radio_driver.getRngSeed());
 
   FILESYSTEM* fs;
@@ -805,17 +972,57 @@ void setup() {
   Serial.println();
 
   command[0] = 0;
-  sensors.begin();
   the_mesh.begin(fs);
   station_fs = fs;
   the_mesh.bringUp();
+  mesh_up = true;
 
 #if ENABLE_ADVERT_ON_BOOT == 1
   the_mesh.sendSelfAdvertisement(16000, false);
 #endif
 }
 
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+  Serial.println(kProjectName);
+  Serial.println(kFirmwareVersion);
+  Serial.flush();
+  setFranceTz();
+
+  board.begin();
+
+  radio_ok = radio_init();
+  if (!radio_ok) {
+    Serial.println("radio init echec");
+    Serial.flush();
+    return;
+  }
+  bootMesh();
+}
+
 void loop() {
+  if (!radio_ok) {
+    radio_ok = radio_init();
+    if (!radio_ok) {
+      Serial.println("radio init echec");
+      delay(2000);
+      return;
+    }
+    bootMesh();
+  }
+  if (!mesh_up) {
+    return;
+  }
+  if (!sensors_booted) {
+    the_mesh.loop();
+    sensors.begin();
+    the_mesh.startGpsChase();
+    sensors_booted = true;
+    Serial.println("capteurs prets");
+    Serial.flush();
+  }
+
   int len = strlen(command);
   if (len >= static_cast<int>(sizeof(command))) {
     command[0] = 0;

@@ -46,9 +46,9 @@ Les réglages sont ceux du profil France publié sur [meshcore.fr](https://www.m
 | Chemin | `path.hash.mode 1` | Adresses de chemin sur 2 octets, comme les répéteurs du réseau |
 | Annonce locale | toutes les 4 h | Présence zero-hop, `advert.interval 240` |
 | Annonce flood | toutes les 12 h | Découverte plus loin |
-| CAD | activé | La carte écoute le canal avant d’émettre |
+| CAD | coupé | Forcé à chaque démarrage. L’émission n’attend pas un canal libre |
 
-Le facteur d’airtime correspondant au duty cycle de 10 % est 9 (`set dutycycle 10`). Si le budget d’émission restant est trop juste pour la trame, l’envoi attend.
+Le facteur d’airtime correspondant au duty cycle de 10 % est 9 (`set dutycycle 10`). Un envoi planifié attend si le budget local est trop court pour le `GRP_DATA`. `mto_now` est mis en file dans tous les cas ; le répartiteur radio applique ensuite le temps d’air réel.
 
 ## Canal #germacrisepublic et région fr-42
 
@@ -56,13 +56,15 @@ Deux choses différentes circulent sur la même radio.
 
 **Le canal** dit qui affiche la mesure. Il s’appelle **#germacrisepublic**, tout en minuscules, sans underscore. Ce nom ne change pas. Il est public : il n’a pas de clé. Le secret MeshCore de la trame est vide, seize octets à zéro. Un compagnon qui ajoute ce canal sans clé lit la mesure. Sur l’air, le hash de canal est `0x37` (premier octet du SHA-256 de ce secret vide). Tous les canaux au secret vide partagent ce hash : le nom saisi sur le compagnon doit être exactement `#germacrisepublic`.
 
-**La région** dit jusqu’où le réseau accepte de relayer. Le flood des mesures, y compris la réponse à `mto_now`, est porté par **`fr-42`** (Loire). C’est aussi la région du nœud, la région par défaut et la région « home ». `fr-ara` n’est plus la portée de ce flux.
+**La région** dit jusqu’où le réseau accepte de relayer. Les envois planifiés (créneaux 06:00, 12:00, 18:00, choc, hors plage) partent en flood **`fr-42`** (Loire). C’est aussi la région du nœud, la région par défaut et la région « home ».
 
-`fr-42` est un enfant de `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie pas `fr-42`. Il faut lui charger ce nom, sinon les trames s’arrêtent au premier saut.
+`fr-42` est un enfant de `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie pas un flood étiqueté `fr-42`. Il faut lui charger ce nom, sinon les mesures planifiées s’arrêtent au premier saut.
 
-La clé de transport se calcule : début du SHA-256 de `#fr-42`. Le canal #germacrisepublic n’a pas de clé et n’entre pas dans ce calcul.
+La clé de transport de `fr-42` est le début du SHA-256 de `#fr-42`. Celle de `fr` est le début du SHA-256 de `#fr`. Le canal #germacrisepublic n’a pas de clé et n’entre pas dans ce calcul.
 
-Au premier démarrage, la carte enregistre ce profil (régions, duty cycle, cadence d’annonces, répétition coupée). Les changements faits ensuite au clavier restent en mémoire.
+La station accepte les floods `fr-42`, `fr` et sans étiquette de transport : elle ne jette pas une demande parce que le code de région diffère. La réponse à `mto_now` part toujours en `fr-42`. Si la demande est arrivée en `fr`, ou sous une autre étiquette, une seconde copie part aussi sur `fr`. Si la demande n’avait pas de code de transport, cette seconde copie part sans étiquette. Une demande déjà en `fr-42`, un message direct ou la commande CLI restent sur `fr-42` seul.
+
+À chaque démarrage, la carte recolle la radio sur EU868 Narrow (869,618 MHz, 62,5 kHz, SF 8, CR 8, 22 dBm), coupe le CAD, coupe le relais, et réautorise le flood sur `fr`, `fr-42` et le joker. Le fichier de réglages survit à la copie UF2 : une image précédente y laisse souvent le coding rate 5, et la station ne démodule plus le pager. Le marqueur `/stmet.seed` ne sert qu’une fois, pour le duty cycle, les annonces et `set repeat off`. Un `set freq` ou un `set cad on` saisi ensuite est recouvert au prochain démarrage.
 
 ## Ce qui est envoyé
 
@@ -73,10 +75,10 @@ La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Les che
 
 `0xFF42` se lit ainsi : un entier 16 bits petit-boutiste, un octet de longueur, puis les octets LPP.
 
-Un `mto_now` reçu par radio déclenche ce flood. La station le reconnaît sur **#germacrisepublic** (GRP_TXT 1.18 `NomDuPager: mto_now`, ou texte collé au timestamp), en message direct, et en CLI. S'il n'y a pas encore de mesure, elle interroge le BME tout de suite et envoie dès qu'il y a une température ou une pression. Le `GRP_DATA` part même si le texte ne tient pas dans le temps d'air restant. Le duty cycle 10 % reste en vigueur. Portée **`fr-42`**.
+Un `mto_now` reçu par radio déclenche ce flood. La station le reconnaît sur **#germacrisepublic** (GRP_TXT 1.18 `NomDuPager: mto_now`, ou texte collé au timestamp), en message direct, et en CLI. La lecture du BME se fait après le retour du callback radio. S’il y a une température ou une pression, le `GRP_DATA` part. Le `GRP_TXT` part dans tous les cas : la ligne de mesure, ou le texte `pas de mesure` tant qu’il n’y a pas d’échantillon. Le budget local ne retient pas cette réponse. Le duty cycle 10 % du répartiteur radio reste appliqué à l’antenne.
 
-- un `GRP_TXT` (`0x05`), auteur `F4EED-Meteo`, avec la ligne de mesure (température, humidité, pression, rosée, ressenti, gel, feu, fumée), si le budget radio le permet ;
-- le `GRP_DATA` `0xFF42` ci-dessus, dès que son propre temps d'air passe.
+- un `GRP_TXT` (`0x05`), auteur `F4EED-Meteo`, avec la ligne de mesure (température, humidité, pression, rosée, ressenti, gel, feu, fumée), ou `pas de mesure` ;
+- le `GRP_DATA` `0xFF42` ci-dessus, dès qu’un échantillon T ou P existe.
 
 Le compagnon affiche le texte dans le canal. Le `GRP_DATA` arrive en plus au logiciel branché en USB (`0x1B`, type `0xFF42`, puis le LPP). Ce n’est pas un bulletin de prévision.
 
@@ -145,9 +147,11 @@ L’image à copier sur la carte est dans le dépôt :
 
 `firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`
 
-SHA-256 : `6b4dbc10c9e66dbe8f1f6443494c661aa05ba029583f7828c21b92a9e26f79df`
+SHA-256 : `0034ba2fc7fcea191f4be5ecdfbb975a102594c0f2b8bb4d365225075310207c`
 
-`build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
+702 976 octets, départ `0x27000`. Flash 351 444 / 811 008 octets (43,3 %), RAM 31 984 / 235 520 (13,6 %). Cette image remplace `6b4dbc10c9e66dbe8f1f6443494c661aa05ba029583f7828c21b92a9e26f79df` : la carte déjà flashée avec l’ancienne somme doit être reflashée.
+
+`build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Avant `pio`, il copie `firmware/variant/fix_wire_timeout.py` : le script borne à 25 ms les attentes du maître I2C nRF52 (TWIM), pour qu’un Grove muet ne bloque plus `setup()`. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
 
 Les dossiers `firmware/` et `scripts/` arrivent avec le firmware. Tant qu’ils ne sont pas sur `main`, ils sont dans la [pull request firmware](https://github.com/F4EED/Meshcore_Station_Meteo/pull/1), branche `cursor/station-meteo-firmware-c913`.
 
@@ -157,7 +161,13 @@ Les dossiers `firmware/` et `scripts/` arrivent avec le firmware. Tant qu’ils 
 2. Brancher le L1 Pro en USB.
 3. **Deux appuis rapides** sur le bouton reset. Un volume UF2 apparaît (le chargeur de boot de la carte).
 4. Copier `Meshcore_Station_Meteo-0.0.1.uf2` sur ce volume. La carte redémarre toute seule à la fin de la copie.
-5. Ouvrir la console série à **115200** bauds.
+5. Ouvrir la console USB CDC. Sur le L1 Pro, c’est l’interface `VID_2886` / `PID_1667`, interface `MI_00` (COM25 sur le poste GMC-Poste-maitre). `Serial.begin(115200)` est l’appel du firmware : sur ce CDC, le débit demandé est ignoré, le port répond dès que l’application tourne. Les commandes se terminent par un retour chariot (`\r`). Il n’y a pas d’autre commande de journal.
+
+La boucle écrit toutes les 10 s : `ecoute #germacrisepublic h37 fr-42 rx=… cr=8 cad=off`. Si le port est ouvert pendant le démarrage, on voit aussi `Meshcore_Station_Meteo`, `Meshcore_Station_Meteo-0.0.1`, `radio 869.618 bw 62.5 sf 8 cr 8`, `RX armee`, puis `capteurs prets`. Un port ouvert après le boot reste vide jusqu’à la ligne `ecoute` suivante.
+
+`RX txt h37` : une trame de groupe a été démodulée, hash de canal `0x37`. `RX txt h37 ouvert` : le flood n’avait pas de code de transport. `mto_now scope N` puis `TX mto_now … o xN` : la réponse est en file. Scope `0` = `fr-42` seul, `1` = aussi `fr`, `2` = aussi sans étiquette, `3` = autre étiquette, copie aussi sur `fr`.
+
+Un seul appui sur reset relance l’application. Deux appuis rapides, ou un contact à 1 200 bauds, ouvrent le chargeur UF2 (volume « TRACKER L1 »). La ligne DTR ne réinitialise pas le nRF52. Zéro octet après un retour chariot, y compris sur `help`, veut dire que `loop()` ne tourne pas.
 
 Commandes utiles, en plus du CLI MeshCore habituel :
 
