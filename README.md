@@ -73,10 +73,10 @@ La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Les che
 
 `0xFF42` se lit ainsi : un entier 16 bits petit-boutiste, un octet de longueur, puis les octets LPP.
 
-Un texte de canal `mto_now` (souvent `NomDuPager: mto_now`) est déchiffré sur **#germacrisepublic**. La station répond tout de suite, sous le duty cycle, par deux floods `fr-42` que tout compagnon du canal peut voir :
+Un `mto_now` reçu par radio déclenche ce flood. La station le reconnaît sur **#germacrisepublic** (GRP_TXT 1.18 `NomDuPager: mto_now`, ou texte collé au timestamp), en message direct, et en CLI. S'il n'y a pas encore de mesure, elle interroge le BME tout de suite et envoie dès qu'il y a une température ou une pression. Le `GRP_DATA` part même si le texte ne tient pas dans le temps d'air restant. Le duty cycle 10 % reste en vigueur. Portée **`fr-42`**.
 
-- un `GRP_TXT` (`0x05`), auteur `F4EED-Meteo`, avec la ligne de mesure (température, humidité, pression, rosée, ressenti, gel, feu, fumée) ;
-- le `GRP_DATA` `0xFF42` ci-dessus.
+- un `GRP_TXT` (`0x05`), auteur `F4EED-Meteo`, avec la ligne de mesure (température, humidité, pression, rosée, ressenti, gel, feu, fumée), si le budget radio le permet ;
+- le `GRP_DATA` `0xFF42` ci-dessus, dès que son propre temps d'air passe.
 
 Le compagnon affiche le texte dans le canal. Le `GRP_DATA` arrive en plus au logiciel branché en USB (`0x1B`, type `0xFF42`, puis le LPP). Ce n’est pas un bulletin de prévision.
 
@@ -145,7 +145,7 @@ L’image à copier sur la carte est dans le dépôt :
 
 `firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`
 
-SHA-256 : `f56bfbf2e7841d177d42fa9d6ba9162d4abd8bf214ec05ce39a3cc08a3c1cf6e`
+SHA-256 : `6b4dbc10c9e66dbe8f1f6443494c661aa05ba029583f7828c21b92a9e26f79df`
 
 `build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
 
