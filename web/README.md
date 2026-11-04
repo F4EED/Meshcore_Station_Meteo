@@ -6,14 +6,14 @@ Ce dossier est le client. Le README à la racine du dépôt reste celui de tout 
 
 ## Pages
 
-- **Météo** — relevé courant, pastilles vert / orange / rouge, point de rosée, ressenti, indices gel/verglas et incendie, signal de fumée éventuelle.
-- **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale. Le sélecteur USB liste Espressif `0x303A` (PID `0x1001`, compagnon USB JTAG), Seeed `0x2886`, et les autres ponts MeshCore (`0x10C4`, `0x1A86`, `0x0403`, `0x239A`, `0x2E8A`, `0x1915`). Il ne se limite pas à Seeed.
+- **Météo** — relevé de la **station**, pas la sonde du dongle USB. Pastilles vert / orange / rouge, point de rosée, ressenti, indices gel/verglas et incendie, fumée. Ces grandeurs viennent du `GRP_DATA` `0xFF42` ou du texte `mto_now` quand le compagnon les a reçus ; sinon le client les calcule avec les mêmes formules.
+- **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale. Le sélecteur USB liste Espressif `0x303A` (PID `0x1001`, compagnon USB JTAG), Seeed `0x2886`, et les autres ponts MeshCore (`0x10C4`, `0x1A86`, `0x0403`, `0x239A`, `0x2E8A`, `0x1915`). Il ne se limite pas à Seeed. Branché à un compagnon, le client **n’envoie pas** la télémétrie locale `0x27` : elle lirait le micro du dongle (souvent ~39 °C, batterie 0).
 - **Réglages**
-  - **Canal** — nom et emplacement. Usine : `#germacrise_publique`, public, sans clé à saisir, emplacement 1. Le champ clé reste vide : le client envoie seize octets à zéro.
-  - **Région** — région par défaut. Usine : `fr-ara`. La clé de transport du flood est optionnelle et n’est pas inventée.
+  - **Canal** — nom et emplacement. Usine : `#germacrisepublic`, public, sans clé à saisir, emplacement 1. Le champ clé reste vide : le client envoie seize octets à zéro. Le nom est figé. La connexion ne réécrit pas les emplacements déjà présents.
+  - **Région** — région par défaut. Usine : `fr-42`. La clé de transport du flood est optionnelle et n’est pas inventée.
   - **Configuration** — min/max et autres seuils STMET (température, humidité, pression, gaz, IAQ, eCO2) plus les indices gel et incendie.
 
-Les indices affichés sont calculés dans le client. Ce n’est pas une prévision, ni un IFM.
+Les indices ne sont pas une prévision, ni un IFM. Quand le LPP les porte (gel canal 4, feu canal 5, rosée canal 7, ressenti canal 8, tous des types déjà définis), l’écran montre ces valeurs. L’encodeur LPP du client écrit les mêmes canaux.
 
 ## Lancement
 

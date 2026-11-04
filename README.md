@@ -174,11 +174,11 @@ L’interface est en français.
 
 | Page | Rôle |
 | --- | --- |
-| Météo | Température, humidité, pression, gaz, IAQ, eCO2, batterie, point de rosée, ressenti, indices gel/verglas et incendie |
-| Connexions | USB, Bluetooth, HTTP, ou une démonstration sans radio. Le port USB proposé inclut le compagnon Espressif `0x303A` / PID `0x1001`, pas seulement Seeed `0x2886` |
-| Réglages | Nom du canal, sans clé, région par défaut, onglet Configuration pour les bandes et les indices |
+| Météo | Mesures de la station reçues par le compagnon : température, humidité, pression, gaz, IAQ, eCO2, batterie, point de rosée, ressenti, indices gel/verglas et incendie |
+| Connexions | USB, Bluetooth, HTTP, ou une démonstration sans radio. Le port USB proposé inclut le compagnon Espressif `0x303A` / PID `0x1001`, pas seulement Seeed `0x2886`. Sur un compagnon, la page n’affiche pas la télémétrie locale du dongle |
+| Réglages | Nom du canal, sans clé, région par défaut, onglet Configuration pour les bandes et les indices. La connexion ne renomme pas un emplacement déjà écrit |
 
-Réglage d’usine du canal dans l’appli : **#germacrise_publique**, sans clé, région **fr-ara**.
+Réglage d’usine du canal dans l’appli : **#germacrisepublic**, sans clé, région **fr-42**. Ce nom ne change plus. Le compagnon USB écoute le flood de ce canal (`GRP_DATA` `0xFF42` en `0x1B`, et le texte `F4EED-Meteo: T … rosée … ressenti …`), au lieu de sonder le LPP du nœud branché. Rosée, ressenti, gel, feu et fumée sont affichés ; le LPP les porte (canaux 7, 8, 4, 5 et 6).
 
 ```bash
 cd web
