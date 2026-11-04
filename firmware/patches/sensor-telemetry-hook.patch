@@ -1,0 +1,31 @@
+diff --git a/examples/simple_sensor/SensorMesh.h b/examples/simple_sensor/SensorMesh.h
+--- a/examples/simple_sensor/SensorMesh.h
++++ b/examples/simple_sensor/SensorMesh.h
+@@ -116,6 +116,7 @@ protected:
+   };
+   void alertIf(bool condition, Trigger& t, AlertPriority pri, const char* text);
+ 
+   virtual void onSensorDataRead() = 0;   // for app to implement
++  virtual void onTelemetryBuilt(CayenneLPP& telemetry) {}
+   virtual int querySeriesData(uint32_t start_secs_ago, uint32_t end_secs_ago, MinMaxAvg dest[], int max_num) = 0;  // for app to implement
+   virtual bool handleCustomCommand(uint32_t sender_timestamp, char* command, char* reply) { return false; }
+ 
+diff --git a/examples/simple_sensor/SensorMesh.cpp b/examples/simple_sensor/SensorMesh.cpp
+--- a/examples/simple_sensor/SensorMesh.cpp
++++ b/examples/simple_sensor/SensorMesh.cpp
+@@ -157,6 +157,7 @@ uint8_t SensorMesh::handleRequest(ClientInfo* from, uint32_t sender_timestamp, u
+     if (!isnan(temperature)) {   // Supported boards with built-in temperature sensor. ESP32-C3 may return NAN
+       telemetry.addTemperature(TELEM_CHANNEL_SELF, temperature);    // Built-in MCU Temperature
+     }
++    onTelemetryBuilt(telemetry);
+ 
+     uint8_t tlen = telemetry.getSize();
+     memcpy(&reply_data[4], telemetry.getBuffer(), tlen);
+@@ -1038,6 +1039,7 @@ void SensorMesh::loop() {
+     if (!isnan(temperature)) {   // Supported boards with built-in temperature sensor. ESP32-C3 may return NAN
+       telemetry.addTemperature(TELEM_CHANNEL_SELF, temperature);    // Built-in MCU Temperature
+     }
++    onTelemetryBuilt(telemetry);
+ 
+     // compare with previous telemetry, check if any deltas are greater than subscriber minimums
+     for (int i = 0; i < acl.getNumClients(); i++) {
