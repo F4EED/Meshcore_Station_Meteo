@@ -54,13 +54,32 @@ Le facteur d’airtime correspondant au duty cycle de 10 % est 9 (`set dutycycle
 
 Deux choses différentes circulent sur la même radio.
 
-**Le canal** dit qui affiche la mesure. Il s’appelle **#germacrisepublic**, tout en minuscules, sans underscore. Ce nom ne change pas. Il est public : il n’a pas de clé. Le secret MeshCore de la trame est vide, seize octets à zéro. Un compagnon qui ajoute ce canal sans clé lit la mesure. Sur l’air, le hash de canal est `0x37` (premier octet du SHA-256 de ce secret vide). Tous les canaux au secret vide partagent ce hash : le nom saisi sur le compagnon doit être exactement `#germacrisepublic`.
+**Le canal** dit qui affiche la mesure. Il s’appelle **#germacrisepublic**, tout en minuscules, sans underscore. Ce nom ne change pas. C’est un canal **hashtag** MeshCore : le T-LoRa Pager calcule la clé dès que le nom commence par `#`, et il ne laisse pas la remplacer. La station utilise le même calcul.
+
+Algorithme (protocole compagnon MeshCore, le vecteur `#test` donne `9cd8fcf22a47333b591d96a2b848b73f`) : SHA-256 du nom entier, dièse compris, puis les **16 premiers octets**. Pour `#germacrisepublic` :
+
+- secret : `81f937fdec56c4005a9f78c05f723d05`
+- hash d’air : `0x81` (premier octet du SHA-256 de ces 16 octets)
+
+Les 16 octets de queue du tampon secret restent à zéro. Le MAC porte sur les 32 octets, l’AES sur les 16 de tête. Le canal Public d’usine du pager (`8b3387e9c5cdea6ac9e5edbaa115cd72`, hash `0x11`) est un autre salon. Seize octets à zéro donneraient le hash `0x37`, que cette station n’écoute plus.
+
+### Canal sur le T-LoRa Pager
+
+D’après le [guide T-Pager](https://files.liamcottle.net/MeshCore/Documentation/Ripple/T-Pager%20User%20Guide.pdf) (UI v10) :
+
+1. Profil réseau, emplacement **Channel** libre (le Public du premier slot reste à part).
+2. Appui long sur **ENTER**, **Enable**.
+3. Menu **type #**, puis `germacrisepublic`. Le pager pose la clé hashtag.
+4. Laisser cette clé. **ENTER** pour enregistrer.
+5. **Regions** → **Add New** → `fr-42` si elle manque. Dans le salon, **Set Scope** → `fr-42`.
+
+Un compagnon USB se règle avec le même nom et le secret hex ci-dessus. Après reflash, COM25 doit montrer `ecoute #germacrisepublic h81 fr-42 …` et, sur `mto_now`, `RX txt h81`.
 
 **La région** dit jusqu’où le réseau accepte de relayer. Les envois planifiés (créneaux 06:00, 12:00, 18:00, choc, hors plage) partent en flood **`fr-42`** (Loire). C’est aussi la région du nœud, la région par défaut et la région « home ».
 
 `fr-42` est un enfant de `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie pas un flood étiqueté `fr-42`. Il faut lui charger ce nom, sinon les mesures planifiées s’arrêtent au premier saut.
 
-La clé de transport de `fr-42` est le début du SHA-256 de `#fr-42`. Celle de `fr` est le début du SHA-256 de `#fr`. Le canal #germacrisepublic n’a pas de clé et n’entre pas dans ce calcul.
+La clé de transport de `fr-42` est le début du SHA-256 de `#fr-42`. Celle de `fr` est le début du SHA-256 de `#fr`. Le secret hashtag du canal est un autre calcul : il ne sert pas de clé de transport.
 
 La station accepte les floods `fr-42`, `fr` et sans étiquette de transport : elle ne jette pas une demande parce que le code de région diffère. La réponse à `mto_now` part toujours en `fr-42`. Si la demande est arrivée en `fr`, ou sous une autre étiquette, une seconde copie part aussi sur `fr`. Si la demande n’avait pas de code de transport, cette seconde copie part sans étiquette. Une demande déjà en `fr-42`, un message direct ou la commande CLI restent sur `fr-42` seul.
 
@@ -147,9 +166,9 @@ L’image à copier sur la carte est dans le dépôt :
 
 `firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`
 
-SHA-256 : `0034ba2fc7fcea191f4be5ecdfbb975a102594c0f2b8bb4d365225075310207c`
+SHA-256 : `3625698f6fc7303392c9c9ef04f362e7dfaf8924a3af28f6c7fb41dd1777b56f`
 
-702 976 octets, départ `0x27000`. Flash 351 444 / 811 008 octets (43,3 %), RAM 31 984 / 235 520 (13,6 %). Cette image remplace `6b4dbc10c9e66dbe8f1f6443494c661aa05ba029583f7828c21b92a9e26f79df` : la carte déjà flashée avec l’ancienne somme doit être reflashée.
+703 488 octets, départ `0x27000`. Flash 351 492 / 811 008 octets (43,3 %), RAM 31 984 / 235 520 (13,6 %). Cette image remplace `0034ba2fc7fcea191f4be5ecdfbb975a102594c0f2b8bb4d365225075310207c` : la carte qui écoute encore le hash `0x37` doit être reflashée. Le battement attendu est `ecoute #germacrisepublic h81`.
 
 `build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Avant `pio`, il copie `firmware/variant/fix_wire_timeout.py` : le script borne à 25 ms les attentes du maître I2C nRF52 (TWIM), pour qu’un Grove muet ne bloque plus `setup()`. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
 
@@ -163,9 +182,9 @@ Les dossiers `firmware/` et `scripts/` arrivent avec le firmware. Tant qu’ils 
 4. Copier `Meshcore_Station_Meteo-0.0.1.uf2` sur ce volume. La carte redémarre toute seule à la fin de la copie.
 5. Ouvrir la console USB CDC. Sur le L1 Pro, c’est l’interface `VID_2886` / `PID_1667`, interface `MI_00` (COM25 sur le poste GMC-Poste-maitre). `Serial.begin(115200)` est l’appel du firmware : sur ce CDC, le débit demandé est ignoré, le port répond dès que l’application tourne. Les commandes se terminent par un retour chariot (`\r`). Il n’y a pas d’autre commande de journal.
 
-La boucle écrit toutes les 10 s : `ecoute #germacrisepublic h37 fr-42 rx=… cr=8 cad=off`. Si le port est ouvert pendant le démarrage, on voit aussi `Meshcore_Station_Meteo`, `Meshcore_Station_Meteo-0.0.1`, `radio 869.618 bw 62.5 sf 8 cr 8`, `RX armee`, puis `capteurs prets`. Un port ouvert après le boot reste vide jusqu’à la ligne `ecoute` suivante.
+La boucle écrit toutes les 10 s : `ecoute #germacrisepublic h81 fr-42 rx=… cr=8 cad=off`. Si le port est ouvert pendant le démarrage, on voit aussi `Meshcore_Station_Meteo`, `Meshcore_Station_Meteo-0.0.1`, `radio 869.618 bw 62.5 sf 8 cr 8`, `canal #germacrisepublic h81 cle 81F937FDEC56C4005A9F78C05F723D05`, `RX armee`, puis `capteurs prets`. Un port ouvert après le boot reste vide jusqu’à la ligne `ecoute` suivante.
 
-`RX txt h37` : une trame de groupe a été démodulée, hash de canal `0x37`. `RX txt h37 ouvert` : le flood n’avait pas de code de transport. `mto_now scope N` puis `TX mto_now … o xN` : la réponse est en file. Scope `0` = `fr-42` seul, `1` = aussi `fr`, `2` = aussi sans étiquette, `3` = autre étiquette, copie aussi sur `fr`.
+`RX txt h81` : GRP_TXT du canal hashtag. `RX txt h37` : ancien secret à zéro, que cette image n’ouvre plus. `RX txt h11` : canal Public d’usine du pager. `ouvert` : flood sans code de transport. `mto_now scope N` puis `TX mto_now … o xN` : la réponse est en file. Scope `0` = `fr-42` seul, `1` = aussi `fr`, `2` = aussi sans étiquette, `3` = autre étiquette, copie aussi sur `fr`.
 
 Un seul appui sur reset relance l’application. Deux appuis rapides, ou un contact à 1 200 bauds, ouvrent le chargeur UF2 (volume « TRACKER L1 »). La ligne DTR ne réinitialise pas le nRF52. Zéro octet après un retour chariot, y compris sur `help`, veut dire que `loop()` ne tourne pas.
 
@@ -181,7 +200,7 @@ Commandes utiles, en plus du CLI MeshCore habituel :
 
 Noms de bandes : `temp`, `humidity`, `pressure`, `gas`, `iaq`, `co2`, `frost`, `fire`, `smoke`.
 
-Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, et au moins un compagnon (pas la station elle-même) qui a le canal **#germacrisepublic** sans clé et la région `fr-42`. Envoyer `mto_now` depuis un pager : le compagnon doit montrer le texte et le LPP `0xFF42` (rosée, ressenti, indices).
+Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, pager sur **#germacrisepublic** avec la clé hashtag laissée en place et le scope `fr-42`. Envoyer `mto_now` : COM25 doit montrer `RX txt h81`, et un compagnon réglé sur le secret `81f937fdec56c4005a9f78c05f723d05` doit montrer le texte et le LPP `0xFF42`.
 
 <!-- appli-web -->
 
@@ -195,9 +214,9 @@ L’interface est en français.
 | --- | --- |
 | Météo | Température, humidité, pression, gaz, IAQ, eCO2, batterie, point de rosée, ressenti, indices gel/verglas et incendie |
 | Connexions | USB, Bluetooth, HTTP, ou une démonstration sans radio |
-| Réglages | Nom du canal, sans clé, région par défaut, onglet Configuration pour les bandes et les indices |
+| Réglages | Nom du canal hashtag, secret dérivé du nom, région par défaut, onglet Configuration pour les bandes et les indices |
 
-Réglage d’usine du canal dans l’appli : **#germacrisepublic**, sans clé, région **fr-42**. Le nom ne change pas.
+Réglage d’usine du canal dans l’appli : **#germacrisepublic**, secret hashtag `81f937fdec56c4005a9f78c05f723d05`, hash `0x81`, région **fr-42**. Le nom ne change pas.
 
 ```bash
 cd web

@@ -22,8 +22,9 @@
 // région, ou sous une autre étiquette, est aussi renvoyée sur cette portée
 // pour qu'un répéteur qui n'a que fr puisse la porter. Le GRP_DATA 0xFF42
 // part dès qu'il y a au moins T ou P. Sans mesure, un GRP_TXT « pas de mesure »
-// part quand même. Secret de canal : 32 octets à zéro (MAC sur 32, AES sur
-// 16), hash d'air 0x37. Le nom #germacrisepublic n'entre pas dans ce hash.
+// part quand même. Canal hashtag : secret = 16 premiers octets de
+// SHA-256("#germacrisepublic"), hash d'air 0x81. MAC sur 32 octets
+// (les 16 de queue à zéro), AES sur les 16 de tête.
 // À chaque boot, la radio est recollée sur EU868 Narrow (le fichier de
 // réglages survit au UF2). CAD coupé. Pas de sommeil. L'I2C capteur ne
 // s'exécute pas dans le callback radio.
@@ -114,8 +115,11 @@ class MyMesh : public SensorMesh {
     loadGpsMarker();
     Serial.print("canal ");
     Serial.print(kChannelName);
-    Serial.print(" hash ");
-    Serial.println(channel_.hash[0], HEX);
+    Serial.print(" h");
+    Serial.print(channel_.hash[0], HEX);
+    Serial.print(" cle ");
+    mesh::Utils::printHex(Serial, channel_.secret, 16);
+    Serial.println();
     Serial.println("RX armee");
     Serial.flush();
   }
@@ -235,8 +239,8 @@ class MyMesh : public SensorMesh {
 
   int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override {
     // L'appelant ne fournit qu'un octet (PATH_HASH_SIZE). On ne lit pas plus loin.
-    // Indépendant de la région : un GRP_TXT chiffré avec le secret vide doit
-    // se déchiffrer même si le flood n'est pas fr-42.
+    // Indépendant de la région : un GRP_TXT du canal hashtag se déchiffre
+    // même si le flood n'est pas fr-42.
     if (!hash_ready_ || hash == nullptr || max_matches < 1) {
       return 0;
     }
@@ -399,17 +403,20 @@ class MyMesh : public SensorMesh {
   }
 
   void prepareChannel() {
-    // Canal public, sans clé. Le hash d'air est le premier octet de
-    // SHA-256(16 zéros) = 0x37. On calcule dans un tampon de 32 octets :
-    // hash[] n'en fait qu'un, et secret[] est juste après en mémoire.
-    uint8_t digest[32];
+    // Hashtag MeshCore : SHA-256(nom complet, « # » compris), 16 premiers
+    // octets. hash[] n'en fait qu'un et secret[] le suit en mémoire :
+    // le digest d'air est calculé dans un tampon à part.
+    uint8_t name_digest[32];
     memset(channel_.secret, 0, sizeof(channel_.secret));
-    memset(digest, 0, sizeof(digest));
-    mesh::Utils::sha256(digest, sizeof(digest), channel_.secret, 16);
+    mesh::Utils::sha256(name_digest, sizeof(name_digest), reinterpret_cast<const uint8_t*>(kChannelName),
+                        static_cast<int>(strlen(kChannelName)));
+    memcpy(channel_.secret, name_digest, 16);
+    uint8_t air[32];
+    mesh::Utils::sha256(air, sizeof(air), channel_.secret, 16);
     memset(channel_.hash, 0, sizeof(channel_.hash));
-    channel_.hash[0] = digest[0];
+    channel_.hash[0] = air[0];
     hash_ready_ = true;
-    if (digest[0] != kPublicChannelHash) {
+    if (air[0] != kChannelAirHash) {
       Serial.println("hash canal inattendu");
     }
     char tagged[24];

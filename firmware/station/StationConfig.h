@@ -32,11 +32,14 @@ static constexpr uint8_t kLppGps = 136;
 static constexpr uint16_t kStmetDataType = 0xFF42;
 
 // Nom exact, figé. Minuscules, sans underscore, sans autre casse.
-// Canal public : secret MeshCore de 16 octets à zéro. Le nom n'entre pas
-// dans le hash : SHA-256 de ces 16 zéros commence par 0x37, comme tout
-// canal sans clé. MeshCore n'émet que ce premier octet.
+// Canal hashtag MeshCore : le secret est les 16 premiers octets de
+// SHA-256 du nom, dièse compris (companion_protocol, vecteur #test =
+// 9cd8fcf22a47333b591d96a2b848b73f). Pour ce nom :
+// 81f937fdec56c4005a9f78c05f723d05. Le hash d'air est le premier octet
+// de SHA-256 de ces 16 octets : 0x81. Les 16 octets suivants du secret
+// restent à zéro (clé 128 bits : MAC sur 32, AES sur 16).
 static constexpr char kChannelName[] = "#germacrisepublic";
-static constexpr uint8_t kPublicChannelHash = 0x37;
+static constexpr uint8_t kChannelAirHash = 0x81;
 
 // Région du nœud et portée du flood météo / mto_now. Plus fr-ara pour ce flux.
 static constexpr char kRegionNode[] = "fr-42";
