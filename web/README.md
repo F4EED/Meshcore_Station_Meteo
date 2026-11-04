@@ -6,7 +6,7 @@ Ce dossier est le client. Le README à la racine du dépôt reste celui de tout 
 
 ## Pages
 
-- **Météo** — relevé de la **station**, pas la sonde du dongle USB. Pastilles vert / orange / rouge, point de rosée, ressenti, indices gel/verglas et incendie, fumée. Ces grandeurs viennent du `GRP_DATA` `0xFF42` ou du texte `mto_now` quand le compagnon les a reçus ; sinon le client les calcule avec les mêmes formules.
+- **Météo** — relevé de la **station**, pas la sonde du dongle USB. Pastilles vert / orange / rouge, humidité, gaz, IAQ, eCO2, batterie, point de rosée, ressenti, indices. Le texte `mto_now` accepte `HR` et `RH`, ainsi que `gaz`, `iaq`, `eco2`, `batterie` quand ils sont dans la ligne. Le LPP `0xFF42` lit chaque type à part (104, 100, 125, 116) : il n’abandonne pas le gaz parce que l’humidité manque.
 - **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale. Le sélecteur USB liste Espressif `0x303A` (PID `0x1001`, compagnon USB JTAG), Seeed `0x2886`, et les autres ponts MeshCore (`0x10C4`, `0x1A86`, `0x0403`, `0x239A`, `0x2E8A`, `0x1915`). Il ne se limite pas à Seeed. Branché à un compagnon, le client **n’envoie pas** la télémétrie locale `0x27` : elle lirait le micro du dongle (souvent ~39 °C, batterie 0).
 - **Réglages**
   - **Canal** — nom et emplacement. Usine : `#germacrisepublic`, public, sans clé à saisir, emplacement 1. Le champ clé reste vide : le client envoie seize octets à zéro. Le nom est figé. La connexion ne réécrit pas les emplacements déjà présents.

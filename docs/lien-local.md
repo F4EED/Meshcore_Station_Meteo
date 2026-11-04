@@ -95,21 +95,34 @@ Le client récupère la file avec `0x0A`. Trois réponses utiles :
 | `0x11` / `0x08` | Texte de canal, version 3 ou ancienne. Le corps suit `F4EED-Meteo: …`. On garde cette ligne. Un écho `mto_now` sans mesures est ignoré. |
 | `0x0A` | Plus de message. On s’arrête. La dernière mesure affichée reste en place. |
 
-Le `GRP_TXT` (firmware `135d901`) est une ligne courte, dixièmes pour T, HR, P, rosée et ressenti, entiers pour les indices. Le gaz, l’IAQ, l’eCO2 et la batterie ne sont pas dans ce texte : ils sont dans le `0xFF42`.
+Le `GRP_TXT` (firmware `135d901`) est une ligne courte. Les libellés reconnus, avec un espace ou un `=` devant le nombre :
+
+| Libellé | Grandeur |
+| --- | --- |
+| `T` | air, °C |
+| `HR` ou `RH` | humidité, % |
+| `P` | pression, hPa |
+| `gaz` ou `gas` | résistance du gaz, ohms |
+| `iaq` | IAQ |
+| `eco2` ou `co2` | eCO2, ppm |
+| `batterie` | volts si la valeur est inférieure à 50, sinon millivolts |
+| `rosée`, `ressenti` | °C |
+| `gel`, `feu`, `fumée` | indices |
+
+`RH 55` n’est pas ignoré : ce n’est pas le mot `HR`. Une ligne qui ne contient que `T` et `P` laisse les autres cases vides. Dès que `RH`, `gaz`, `iaq`, `eco2` ou `batterie` sont écrits, ils s’affichent.
 
 ```text
 F4EED-Meteo: T 15.0 HR 55.0 P 1013.2 rosée 6.0 ressenti 14.1 gel 0 feu 2 fumée 0
+F4EED-Meteo: T 15.0 RH 55.0 P 1013.2 gaz 50000 iaq 42 eco2 568 batterie 3.9
 ```
 
-Libellés lus : `T`, `HR`, `P`, `rosée`, `ressenti`, `gel`, `feu`, `fumée`.
-
-Carte LPP `0xFF42` (et télémétrie sensor de la station). Le type 100 est un entier brut. L’humidité tient sur un octet.
+Carte LPP `0xFF42`, et la même charge dans une télémétrie `0x8B`. Chaque type est lu seul : l’absence d’humidité ne jette pas le gaz, l’IAQ, l’eCO2 ni la batterie. Le type 100 est un entier non signé, échelle ×1. L’humidité tient sur un octet (×2). Si cette lecture perd l’humidité alors que la pression est là, on réessaie le type 104 sur deux octets.
 
 | Canal | Type | Grandeur |
 | --- | --- | --- |
 | 1 | 116, 136 s’il y a un fix | batterie, position. La température de ce canal est celle du micro : elle n’est pas l’air |
-| 2 | 103, 104, 115, 100, 125 | air, HR, pression, gaz en ohms, eCO2 ppm |
-| 3 | 100 | IAQ 0–500 |
+| 2 | 103, 104, 115, 100, 121, 125 | air, HR, pression, gaz en ohms, altitude ignorée, eCO2 ppm |
+| 3 | 100 | IAQ, même au-dessus de 500 |
 | 4, 5, 6 | 120 | gel, feu, fumée, 0–100 |
 | 7 | 103 | point de rosée |
 | 8 | 103 | température ressentie |
