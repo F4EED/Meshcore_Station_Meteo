@@ -2,6 +2,25 @@ import { encodeHostFrame, StreamFrameParser } from '../protocol/frame'
 import { FrameQueue } from './queue'
 import type { Link } from './types'
 
+/** VID proposés par `requestPort`. Pas seulement Seeed : le compagnon USB JTAG est Espressif 0x303A / PID 0x1001. */
+export const USB_PORT_FILTERS: SerialPortFilter[] = [
+  { usbVendorId: 0x303a },
+  { usbVendorId: 0x2886 },
+  { usbVendorId: 0x10c4 },
+  { usbVendorId: 0x1a86 },
+  { usbVendorId: 0x0403 },
+  { usbVendorId: 0x239a },
+  { usbVendorId: 0x2e8a },
+  { usbVendorId: 0x1915 },
+]
+
+export const ESPRESSIF_USB_VENDOR_ID = 0x303a
+export const ESPRESSIF_USB_JTAG_PRODUCT_ID = 0x1001
+
+export function serialPortRequest(): SerialPortRequestOptions {
+  return { filters: USB_PORT_FILTERS }
+}
+
 export async function openSerialLink(port: SerialPort): Promise<Link> {
   await port.open({ baudRate: 115200 })
   const parser = new StreamFrameParser()

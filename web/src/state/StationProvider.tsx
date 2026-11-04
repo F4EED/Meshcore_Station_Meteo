@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createDemoLink } from '../link/demo'
 import { openBleLink } from '../link/ble'
 import { HttpLink } from '../link/http'
-import { openSerialLink } from '../link/serial'
+import { openSerialLink, serialPortRequest } from '../link/serial'
 import { StationSession, type Snapshot } from '../link/session'
 import type { Link, LinkKind } from '../link/types'
 import type { Band } from '../model'
@@ -115,7 +115,7 @@ export function StationProvider({ children }: { children: ReactNode }) {
   const connectUsb = useCallback(() => {
     void run(async () => {
       if (!navigator.serial) throw new Error('Web Serial est indisponible. Utilisez Chrome ou Edge.')
-      const port = await navigator.serial.requestPort()
+      const port = await navigator.serial.requestPort(serialPortRequest())
       await attach(await openSerialLink(port))
     })
   }, [attach, run])

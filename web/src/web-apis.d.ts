@@ -1,3 +1,8 @@
+interface SerialPortFilter {
+  usbVendorId: number
+  usbProductId?: number
+}
+
 interface SerialPort {
   open(options: { baudRate: number }): Promise<void>
   close(): Promise<void>
@@ -6,8 +11,12 @@ interface SerialPort {
   addEventListener(type: 'disconnect', listener: () => void): void
 }
 
+interface SerialPortRequestOptions {
+  filters?: SerialPortFilter[]
+}
+
 interface Serial {
-  requestPort(): Promise<SerialPort>
+  requestPort(options?: SerialPortRequestOptions): Promise<SerialPort>
 }
 
 interface BluetoothRequestDeviceOptions {

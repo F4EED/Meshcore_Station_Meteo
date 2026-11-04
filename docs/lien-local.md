@@ -8,7 +8,7 @@ Le client ne décode pas la radio. Il parle au nœud auquel il est branché (la 
 
 | Lien | Emballage | Détail |
 | --- | --- | --- |
-| USB série | hôte → carte `3C len_lo len_hi payload` ; carte → hôte `3E len_lo len_hi payload` | 115200 bauds. Longueur utile sur 16 bits, petit-boutiste. Charge utile max 512 octets côté client. Si le port disparaît, le client le ferme. |
+| USB série | hôte → carte `3C len_lo len_hi payload` ; carte → hôte `3E len_lo len_hi payload` | 115200 bauds. Longueur utile sur 16 bits, petit-boutiste. Charge utile max 512 octets côté client. Si le port disparaît, le client le ferme. Le choix Chrome (`requestPort`) ne filtre pas seulement Seeed `0x2886` : il inclut Espressif `0x303A` (compagnon USB JTAG, PID `0x1001`), Silicon Labs `0x10C4`, WCH `0x1A86`, FTDI `0x0403`, Adafruit `0x239A`, Raspberry Pi `0x2E8A` et Nordic `0x1915`. |
 | Bluetooth LE | une écriture ou notification GATT = une charge utile, **sans** `3C`/`3E` | Service Nordic UART `6e400001-b5a3-f393-e0a9-e50e24dcca9e`. RX (hôte → carte) `6e400002-b5a3-f393-e0a9-e50e24dcca9e`. TX `6e400003-b5a3-f393-e0a9-e50e24dcca9e`. Écriture avec réponse, sinon sans réponse. `CMD_SET_CHANNEL` fait 50 octets : le MTU doit suivre. |
 | HTTP | `POST {base}/api/v1/frame` | Corps JSON `{ "payload": "<base64 de la charge utile, sans 3C>" }`. Réponse `{ "frames": ["<base64>", ...] }`. Une erreur de protocole reste un HTTP 200 qui contient une trame `0x01`. HTTP 400 si le JSON est illisible. `GET {base}/api/v1/health` répond `{ "ok": true }`. |
 | TCP compagnon (port souvent 5000) | même emballage que l’USB | Le navigateur ne peut pas ouvrir ce TCP. Un pont doit exposer le HTTP ci-dessus. |

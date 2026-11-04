@@ -7,7 +7,7 @@ Ce dossier est le client. Le README à la racine du dépôt reste celui de tout 
 ## Pages
 
 - **Météo** — relevé courant, pastilles vert / orange / rouge, point de rosée, ressenti, indices gel/verglas et incendie, signal de fumée éventuelle.
-- **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale.
+- **Connexions** — USB (Web Serial), Bluetooth (Nordic UART), HTTP (`POST /api/v1/frame`), démonstration locale. Le sélecteur USB liste Espressif `0x303A` (PID `0x1001`, compagnon USB JTAG), Seeed `0x2886`, et les autres ponts MeshCore (`0x10C4`, `0x1A86`, `0x0403`, `0x239A`, `0x2E8A`, `0x1915`). Il ne se limite pas à Seeed.
 - **Réglages**
   - **Canal** — nom et emplacement. Usine : `#germacrise_publique`, public, sans clé à saisir, emplacement 1. Le champ clé reste vide : le client envoie seize octets à zéro.
   - **Région** — région par défaut. Usine : `fr-ara`. La clé de transport du flood est optionnelle et n’est pas inventée.

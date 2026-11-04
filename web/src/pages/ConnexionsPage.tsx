@@ -14,7 +14,9 @@ export function ConnexionsPage() {
       <div className="cards">
         <article className="card">
           <h3>USB</h3>
-          <p>Trames <code>0x3C</code> / <code>0x3E</code>, 115200 bauds. Le port est relâché si la carte disparaît.</p>
+          <p>
+            Trames <code>0x3C</code> / <code>0x3E</code>, 115200 bauds. Chrome propose Espressif <code>303A:1001</code> (compagnon USB JTAG), Seeed <code>2886</code> et les autres ponts MeshCore. Le port est relâché si la carte disparaît.
+          </p>
           <button type="button" data-testid="connect-usb" disabled={busy || !serialOk} onClick={connectUsb}>
             Choisir le port
           </button>
