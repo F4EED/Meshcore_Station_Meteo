@@ -4,6 +4,7 @@
 #include "DerivedIndices.h"
 #include "IaqScore.h"
 #include "LppEncoder.h"
+#include "MeteoText.h"
 #include "StationBands.h"
 #include "StationConfig.h"
 #include "WeatherCadence.h"
@@ -14,9 +15,10 @@
 #include <string.h>
 #include <time.h>
 
-// Capteur MeshCore (type 4). Les extras LPP sont ajoutés à la télémétrie
-// (requête et push). La publication #germacrise_publique est un GRP_DATA 0xFF42
-// au secret vide, flood transport fr-ara. Pas de sommeil : le nœud reste en écoute.
+// Capteur MeshCore (type 4). Les extras LPP (rosée, ressenti, indices) sont
+// ajoutés à la télémétrie (requête, push et GRP_DATA). mto_now sur
+// #germacrisepublic déclenche un flood fr-42 : GRP_TXT de mesure + GRP_DATA
+// 0xFF42, secret vide. Pas de sommeil : le nœud reste en écoute.
 
 static const char kBandsPath[] = "/stmet.bands";
 static const char kSeedPath[] = "/stmet.seed";
@@ -184,6 +186,42 @@ class MyMesh : public SensorMesh {
     return n;
   }
 
+  int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override {
+    if (!channel_ready_ || hash == nullptr || max_matches < 1) {
+      return 0;
+    }
+    if (hash[0] != channel_.hash[0]) {
+      return 0;
+    }
+    channels[0] = channel_;
+    return 1;
+  }
+
+  void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data,
+                       size_t len) override {
+    (void)packet;
+    (void)channel;
+    if (type != PAYLOAD_TYPE_GRP_TXT || data == nullptr || len < 6) {
+      return;
+    }
+    uint8_t txt_type = data[4];
+    if ((txt_type >> 2) != 0) {
+      return;
+    }
+    char text[120];
+    size_t n = len - 5;
+    if (n >= sizeof(text)) {
+      n = sizeof(text) - 1;
+    }
+    memcpy(text, data + 5, n);
+    text[n] = 0;
+    if (!containsCommand(text, kMtoNow)) {
+      return;
+    }
+    reply_now_ = true;
+    Serial.println("mto_now");
+  }
+
   bool handleCustomCommand(uint32_t sender_timestamp, char* command, char* reply) override {
     (void)sender_timestamp;
     if (strcmp(command, "bands") == 0) {
@@ -239,6 +277,7 @@ class MyMesh : public SensorMesh {
   bool ever_sent_ = false;
   bool sample_pending_ = false;
   bool force_tx_ = false;
+  bool reply_now_ = false;
   bool have_iaq_ = false;
   bool chase_active_ = false;
   bool gps_settled_ = false;
@@ -276,6 +315,9 @@ class MyMesh : public SensorMesh {
     if (sample.dew_c.present) {
       telemetry.addTemperature(kLppChDew, sample.dew_c.value);
     }
+    if (sample.feels_c.present) {
+      telemetry.addTemperature(kLppChFeels, sample.feels_c.value);
+    }
   }
 
   bool currentPosition(float* lat, float* lon, float* alt) const {
@@ -301,7 +343,7 @@ class MyMesh : public SensorMesh {
     memset(channel_.secret, 0, sizeof(channel_.secret));
     mesh::Utils::sha256(channel_.hash, sizeof(channel_.hash), channel_.secret, 16);
     char tagged[24];
-    snprintf(tagged, sizeof(tagged), "#%s", kRegionChannel);
+    snprintf(tagged, sizeof(tagged), "#%s", kRegionFlood);
     mesh::Utils::sha256(region_key_.key, sizeof(region_key_.key), reinterpret_cast<const uint8_t*>(tagged),
                         static_cast<int>(strlen(tagged)));
     channel_ready_ = !region_key_.isNull();
@@ -486,6 +528,7 @@ class MyMesh : public SensorMesh {
     printReading("iaq", latest_.iaq, "");
     printReading("eco2", latest_.eco2_ppm, "ppm");
     printReading("rosee", latest_.dew_c, "C");
+    printReading("ressenti", latest_.feels_c, "C");
     printReading("gel", latest_.frost, "");
     printReading("feu", latest_.fire, "");
     printReading("fumee", latest_.smoke, "");
@@ -538,19 +581,52 @@ class MyMesh : public SensorMesh {
     if (latest_.dew_c.present && !out->add(kLppChDew, kLppTemperature, latest_.dew_c.value)) {
       return false;
     }
+    if (latest_.feels_c.present && !out->add(kLppChFeels, kLppTemperature, latest_.feels_c.value)) {
+      return false;
+    }
     return out->size() > 0;
+  }
+
+  uint32_t airMs(const mesh::Packet* packet) const {
+    return radio_driver.getEstAirtimeFor(2 + 4 + packet->payload_len);
+  }
+
+  mesh::Packet* buildGroupText(uint32_t now) {
+    char body[96];
+    int body_len = formatMeteoLine(latest_, body, static_cast<int>(sizeof(body)));
+    if (body_len <= 0) {
+      return nullptr;
+    }
+    char prefixed[128];
+    int prefix = snprintf(prefixed, sizeof(prefixed), "%s: ", kNodeName);
+    if (prefix < 0 || prefix + body_len >= static_cast<int>(sizeof(prefixed))) {
+      return nullptr;
+    }
+    memcpy(prefixed + prefix, body, static_cast<size_t>(body_len));
+    int text_len = prefix + body_len;
+    uint8_t plain[5 + sizeof(prefixed)];
+    memcpy(plain, &now, 4);
+    plain[4] = 0;
+    memcpy(plain + 5, prefixed, static_cast<size_t>(text_len));
+    return createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel_, plain, static_cast<size_t>(5 + text_len));
+  }
+
+  void floodNow(mesh::Packet* packet) {
+    uint8_t hash_size = static_cast<uint8_t>(getNodePrefs()->path_hash_mode + 1);
+    sendFloodScoped(region_key_, packet, 0, hash_size);
   }
 
   void maybePublish() {
     if (!have_latest_ || !channel_ready_) {
       return;
     }
-    if (!sample_pending_ && !force_tx_) {
+    bool now_reply = reply_now_;
+    if (!sample_pending_ && !force_tx_ && !now_reply) {
       return;
     }
     uint32_t now = getRTCClock()->getCurrentTime();
     Cadence cadence = evaluateCadence(latest_, have_prev_, prev_, bands_, ever_sent_ ? last_tx_unix_ : now);
-    if (!force_tx_ && !txDue(ever_sent_, now, last_tx_unix_, cadence.interval_s)) {
+    if (!force_tx_ && !now_reply && !txDue(ever_sent_, now, last_tx_unix_, cadence.interval_s)) {
       sample_pending_ = false;
       return;
     }
@@ -566,17 +642,26 @@ class MyMesh : public SensorMesh {
     plain[2] = static_cast<uint8_t>(writer.size());
     memcpy(plain + 3, writer.data(), writer.size());
 
-    mesh::Packet* packet = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel_, plain, 3 + writer.size());
-    if (packet == nullptr) {
+    mesh::Packet* data_pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_DATA, channel_, plain, 3 + writer.size());
+    if (data_pkt == nullptr) {
       return;
     }
-    uint32_t air_ms = radio_driver.getEstAirtimeFor(2 + 4 + packet->payload_len);
-    if (getRemainingTxBudget() < air_ms) {
-      releasePacket(packet);
+    mesh::Packet* text_pkt = now_reply ? buildGroupText(now) : nullptr;
+    uint32_t need = airMs(data_pkt);
+    if (text_pkt != nullptr) {
+      need += airMs(text_pkt);
+    }
+    if (getRemainingTxBudget() < need) {
+      releasePacket(data_pkt);
+      if (text_pkt != nullptr) {
+        releasePacket(text_pkt);
+      }
       return;
     }
-    uint8_t hash_size = static_cast<uint8_t>(getNodePrefs()->path_hash_mode + 1);
-    sendFloodScoped(region_key_, packet, 0, hash_size);
+    floodNow(data_pkt);
+    if (text_pkt != nullptr) {
+      floodNow(text_pkt);
+    }
 
     prev_ = latest_;
     have_prev_ = true;
@@ -584,8 +669,11 @@ class MyMesh : public SensorMesh {
     last_tx_unix_ = now;
     sample_pending_ = false;
     force_tx_ = false;
+    reply_now_ = false;
     const char* mode = "normal";
-    if (cadence.mode == TxMode::Shock) {
+    if (now_reply) {
+      mode = "mto_now";
+    } else if (cadence.mode == TxMode::Shock) {
       mode = "choc";
     } else if (cadence.mode == TxMode::OutOfRange) {
       mode = "hors-plage";

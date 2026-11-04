@@ -14,6 +14,7 @@ static constexpr uint8_t kLppChFrost = 4;
 static constexpr uint8_t kLppChFire = 5;
 static constexpr uint8_t kLppChSmoke = 6;
 static constexpr uint8_t kLppChDew = 7;
+static constexpr uint8_t kLppChFeels = 8;
 
 // Cayenne LPP 1.6.1 (mêmes numéros que la bibliothèque liée par MeshCore).
 static constexpr uint8_t kLppTemperature = 103;
@@ -27,16 +28,18 @@ static constexpr uint8_t kLppAltitude = 121;
 static constexpr uint8_t kLppGps = 136;
 
 // Groupe binaire, plage de développement MeshCore (FF00–FFFF).
-// Charge utile = LPP Cayenne, sans bulletin texte.
+// Charge utile = LPP Cayenne. mto_now ajoute aussi un GRP_TXT de mesure.
 static constexpr uint16_t kStmetDataType = 0xFF42;
 
-// Nom exact, minuscules. Canal public : le GRP_DATA part avec un secret
-// MeshCore de 16 octets à zéro (hash d'air 0x37). Il n'y a pas de clé.
-static constexpr char kChannelName[] = "#germacrise_publique";
+// Nom exact, figé. Minuscules, sans underscore, sans autre casse.
+// Canal public : secret MeshCore de 16 octets à zéro (hash d'air 0x37).
+static constexpr char kChannelName[] = "#germacrisepublic";
 
+// Région du nœud et portée du flood météo / mto_now. Plus fr-ara pour ce flux.
 static constexpr char kRegionNode[] = "fr-42";
-static constexpr char kRegionChannel[] = "fr-ara";
+static constexpr char kRegionFlood[] = "fr-42";
 static constexpr char kRegionParent[] = "fr";
+static constexpr char kMtoNow[] = "mto_now";
 
 // Nom du projet. L'image s'annonce ainsi à la commande ver.
 // Le nœud sur l'air reste kNodeName.

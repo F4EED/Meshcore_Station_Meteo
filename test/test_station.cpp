@@ -2,6 +2,7 @@
 #include "DerivedIndices.h"
 #include "IaqScore.h"
 #include "LppEncoder.h"
+#include "MeteoText.h"
 #include "StationBands.h"
 #include "WeatherCadence.h"
 
@@ -53,6 +54,14 @@ static void testDewAndIndices() {
   float dew = 0.f;
   expect(dewPointC(15.f, 55.f, &dew), "rosée 15/55");
   expectNear(dew, 6.025f, 0.02f, "rosée valeur");
+  float feels = 0.f;
+  expect(feelsLikeC(15.f, 55.f, &feels), "ressenti 15/55");
+  expectNear(feels, 14.089f, 0.02f, "Steadman 15/55");
+  expect(feelsLikeC(27.f, 40.f, &feels), "ressenti 27/40");
+  expectNear(feels, 26.863f, 0.05f, "NWS 27/40");
+  expect(feelsLikeC(30.f, 60.f, &feels), "ressenti 30/60");
+  expectNear(feels, 32.832f, 0.05f, "NWS 30/60");
+  expect(!feelsLikeC(15.f, -1.f, &feels), "hr négative");
   expect(dewPointC(0.f, 100.f, &dew), "rosée saturée");
   expectNear(dew, 0.f, 0.02f, "rosée 0");
   expectEq(frostIndex(-1.f, 95.f), 77, "gel -1/95");
@@ -213,9 +222,24 @@ static void testBands() {
 static void testChannel() {
   expect(strcmp(kProjectName, "Meshcore_Station_Meteo") == 0, "nom du projet");
   expect(strcmp(kFirmwareVersion, "Meshcore_Station_Meteo-0.0.1") == 0, "version d'image");
-  expect(strcmp(kChannelName, "#germacrise_publique") == 0, "nom de canal");
+  expect(strcmp(kChannelName, "#germacrisepublic") == 0, "nom de canal");
+  expect(strchr(kChannelName, '_') == nullptr, "pas d'underscore");
   expectEq(kStmetDataType, 0xFF42, "type groupe");
-  expect(strcmp(kRegionNode, "fr-42") == 0 && strcmp(kRegionChannel, "fr-ara") == 0, "régions");
+  expect(strcmp(kRegionNode, "fr-42") == 0 && strcmp(kRegionFlood, "fr-42") == 0, "flood fr-42");
+  expect(containsCommand("mto_now", kMtoNow), "commande seule");
+  expect(containsCommand("Pager: mto_now", kMtoNow), "préfixe compagnon");
+  expect(!containsCommand("mto_nowish", kMtoNow), "pas un préfixe plus long");
+  expect(!containsCommand("xmto_now", kMtoNow), "pas collé à gauche");
+  WeatherSample sample = emptySample();
+  sample.temp_c = presentReading(15.f);
+  sample.rh = presentReading(55.f);
+  fillDerived(&sample);
+  char line[96];
+  int n = formatMeteoLine(sample, line, sizeof(line));
+  expect(n > 0, "ligne météo");
+  expect(strstr(line, "rosée ") != nullptr && strstr(line, "ressenti ") != nullptr, "rosée et ressenti");
+  expect(strstr(line, "gel ") != nullptr && strstr(line, "feu ") != nullptr, "indices");
+  expect(strstr(line, kMtoNow) == nullptr, "la réponse ne redemande pas");
 }
 
 int main() {

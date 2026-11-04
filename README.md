@@ -12,7 +12,7 @@ Le nœud reste dehors, sans écran et sans lien vers un service météo en ligne
 - plus souvent si une valeur sort des seuils ;
 - encore plus souvent si la météo change d’un coup.
 
-Les autres postes MeshCore qui ont le canal **#germacrise_publique** peuvent lire ces trames. Le rôle de la carte est un **capteur** (type de contact MeshCore `sensor`, valeur 4). Elle répond aux demandes de télémétrie. Elle ne relaie pas le trafic des voisins : ce travail reste aux répéteurs.
+Les autres postes MeshCore qui ont le canal **#germacrisepublic** peuvent lire ces trames. Le nom est figé : minuscules, sans underscore. Le rôle de la carte est un **capteur** (type de contact MeshCore `sensor`, valeur 4). Un pager qui envoie `mto_now` sur ce canal déclenche un flood vers tous les compagnons qui l’ont. Elle ne relaie pas le trafic des voisins : ce travail reste aux répéteurs.
 
 ## Matériel
 
@@ -50,33 +50,35 @@ Les réglages sont ceux du profil France publié sur [meshcore.fr](https://www.m
 
 Le facteur d’airtime correspondant au duty cycle de 10 % est 9 (`set dutycycle 10`). Si le budget d’émission restant est trop juste pour la trame, l’envoi attend.
 
-## Canal #germacrise_publique et régions
+## Canal #germacrisepublic et région fr-42
 
 Deux choses différentes circulent sur la même radio.
 
-**Le canal** dit qui affiche la mesure. Il s’appelle **#germacrise_publique**, tout en minuscules. Il est public : il n’a pas de clé. Le secret MeshCore de la trame est vide, seize octets à zéro. Un client qui ajoute ce canal sans clé lit la mesure. Sur l’air, le hash de canal est `0x37` (premier octet du SHA-256 de ce secret vide).
+**Le canal** dit qui affiche la mesure. Il s’appelle **#germacrisepublic**, tout en minuscules, sans underscore. Ce nom ne change pas. Il est public : il n’a pas de clé. Le secret MeshCore de la trame est vide, seize octets à zéro. Un compagnon qui ajoute ce canal sans clé lit la mesure. Sur l’air, le hash de canal est `0x37` (premier octet du SHA-256 de ce secret vide). Tous les canaux au secret vide partagent ce hash : le nom saisi sur le compagnon doit être exactement `#germacrisepublic`.
 
-**La région** dit jusqu’où le réseau accepte de relayer. La station a deux noms :
+**La région** dit jusqu’où le réseau accepte de relayer. Le flood des mesures, y compris la réponse à `mto_now`, est porté par **`fr-42`** (Loire). C’est aussi la région du nœud, la région par défaut et la région « home ». `fr-ara` n’est plus la portée de ce flux.
 
-| Nom | Usage |
-| --- | --- |
-| `fr-42` | Région du nœud (Loire). Annonces, région par défaut et région « home » |
-| `fr-ara` | Portée de transport des mesures météo, pour l’instant |
+`fr-42` est un enfant de `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie pas `fr-42`. Il faut lui charger ce nom, sinon les trames s’arrêtent au premier saut.
 
-Les deux sont des enfants de la région `fr`, elle-même sous `europe` et `eu`. Un répéteur qui ne connaît que `fr` ne relaie ni `fr-42` ni `fr-ara`. Il faut lui charger ces deux noms, sinon les trames s’arrêtent au premier saut.
-
-La clé de transport d’une région se calcule : début du SHA-256 de `#` collé au nom (`#fr-42`, `#fr-ara`). Le canal #germacrise_publique n’a pas de clé et n’entre pas dans ce calcul.
+La clé de transport se calcule : début du SHA-256 de `#fr-42`. Le canal #germacrisepublic n’a pas de clé et n’entre pas dans ce calcul.
 
 Au premier démarrage, la carte enregistre ce profil (régions, duty cycle, cadence d’annonces, répétition coupée). Les changements faits ensuite au clavier restent en mémoire.
 
 ## Ce qui est envoyé
 
-La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Deux chemins portent les mêmes grandeurs :
+La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Les chemins portent les mêmes grandeurs, y compris la rosée, le ressenti et les indices :
 
 1. la télémétrie du capteur, lue sur demande ou poussée vers un abonné ;
-2. une trame de groupe `GRP_DATA` (`0x06`), type de donnée `0xFF42` (plage de développement MeshCore), secret de canal vide, envoyée en flood sur `fr-ara`.
+2. une trame de groupe `GRP_DATA` (`0x06`), type de donnée `0xFF42` (plage de développement MeshCore), secret de canal vide, flood de transport **`fr-42`**.
 
 `0xFF42` se lit ainsi : un entier 16 bits petit-boutiste, un octet de longueur, puis les octets LPP.
+
+Un texte de canal `mto_now` (souvent `NomDuPager: mto_now`) est déchiffré sur **#germacrisepublic**. La station répond tout de suite, sous le duty cycle, par deux floods `fr-42` que tout compagnon du canal peut voir :
+
+- un `GRP_TXT` (`0x05`), auteur `F4EED-Meteo`, avec la ligne de mesure (température, humidité, pression, rosée, ressenti, gel, feu, fumée) ;
+- le `GRP_DATA` `0xFF42` ci-dessus.
+
+Le compagnon affiche le texte dans le canal. Le `GRP_DATA` arrive en plus au logiciel branché en USB (`0x1B`, type `0xFF42`, puis le LPP). Ce n’est pas un bulletin de prévision.
 
 | Canal LPP | Contenu |
 | --- | --- |
@@ -87,6 +89,7 @@ La station parle en **CayenneLPP**, le format de télémétrie MeshCore. Deux ch
 | 5 | Indice feu météo, 0 à 100 |
 | 6 | Indice fumée, 0 à 100 |
 | 7 | Point de rosée en °C |
+| 8 | Température ressentie en °C |
 
 L’humidité tient sur un octet (valeur × 2), comme la bibliothèque CayenneLPP. Le gaz et l’IAQ sont des entiers bruts (type 100, échelle × 1) : des ohms, ou un score, pas une valeur divisée par 100.
 
@@ -119,6 +122,8 @@ Ces chiffres sont calculés à partir de la mesure du moment. Ce sont des aides 
 
 **Fumée.** Elle suit l’IAQ déjà élevé (0 à IAQ 100, 100 à IAQ 300). Elle dit qu’il y a déjà des composés dans l’air. Elle ne dit pas qu’un feu va partir.
 
+**Ressenti.** Sous 27 °C, formule de Steadman sans vent : `T + 0,33·e − 4`, avec `e = HR/100 · 6,105 · exp(17,27·T / (237,7+T))` en hPa. À partir de 27 °C, indice de chaleur NWS (Rothfusz), ramené en °C. À 15 °C et 55 %, il vaut environ 14,1 °C. Ce n’est pas une prévision.
+
 ## Compiler
 
 Il faut Git et [PlatformIO](https://platformio.org/) (`pio` dans le terminal). Depuis la racine du dépôt :
@@ -140,7 +145,7 @@ L’image à copier sur la carte est dans le dépôt :
 
 `firmware/releases/Meshcore_Station_Meteo-0.0.1.uf2`
 
-SHA-256 : `1b54b4dfac22b15de3771dcb6c8216f7d72880462ab308583f7b0f6c53778e18`
+SHA-256 : `f56bfbf2e7841d177d42fa9d6ba9162d4abd8bf214ec05ce39a3cc08a3c1cf6e`
 
 `build.sh` compile le `.hex`, le convertit en UF2 (famille nRF52840 `0xADA52840`, comme le `build.sh` de MeshCore) et régénère ce fichier. Le fichier intermédiaire `build/MeshCore/.pio/build/WioTrackerL1_meteo/firmware.uf2` n’est pas versionné. L’image embarque la chaîne `Meshcore_Station_Meteo-0.0.1`.
 
@@ -166,7 +171,7 @@ Commandes utiles, en plus du CLI MeshCore habituel :
 
 Noms de bandes : `temp`, `humidity`, `pressure`, `gas`, `iaq`, `co2`, `frost`, `fire`, `smoke`.
 
-Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, et au moins un répéteur ou un compagnon qui a le canal **#germacrise_publique** sans clé, ainsi que les régions `fr-42` et `fr-ara`. Le décodage de la trame `0xFF42` se vérifie sur ce poste.
+Avant de conclure que la station est en service : antenne en place, BME688 vu sur le Grove, première ligne `meteo` cohérente, mot de passe changé, et au moins un compagnon (pas la station elle-même) qui a le canal **#germacrisepublic** sans clé et la région `fr-42`. Envoyer `mto_now` depuis un pager : le compagnon doit montrer le texte et le LPP `0xFF42` (rosée, ressenti, indices).
 
 <!-- appli-web -->
 
@@ -182,7 +187,7 @@ L’interface est en français.
 | Connexions | USB, Bluetooth, HTTP, ou une démonstration sans radio |
 | Réglages | Nom du canal, sans clé, région par défaut, onglet Configuration pour les bandes et les indices |
 
-Réglage d’usine du canal dans l’appli : **#germacrise_publique**, sans clé, région **fr-ara**.
+Réglage d’usine du canal dans l’appli : **#germacrisepublic**, sans clé, région **fr-42**. Le nom ne change pas.
 
 ```bash
 cd web
